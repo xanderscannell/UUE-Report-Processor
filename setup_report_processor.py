@@ -87,6 +87,10 @@ class SetupReportProcessor:
         if self.pdf_path.suffix.lower() != ".pdf":
             raise ValueError(f"Expected PDF file, got: {self.pdf_path.suffix}")
 
+        # Store intermediate data for MATLAB CSV generation
+        self._pdf_text = None
+        self._events = None
+
         logger.info(f"Initialized processor for: {self.pdf_path}")
     
     def extract_text_from_pdf(self) -> str:
@@ -113,7 +117,35 @@ class SetupReportProcessor:
         text = "\n".join(pages)
         logger.info(f"Successfully extracted {len(text)} characters from PDF")
         return text
-    
+
+    def extract_report_date(self, text: str) -> Optional[str]:
+        """
+        Extract report date from PDF and format as DD-Mon-YYYY.
+
+        Args:
+            text: Complete text content of the PDF
+
+        Returns:
+            Date string in format "DD-Mon-YYYY" (e.g., "07-Jan-2026") or None if not found
+
+        Example:
+            >>> text = "Wednesday, Jan 07 2026 Daily Setup Report\\n..."
+            >>> processor.extract_report_date(text)
+            '07-Jan-2026'
+        """
+        # Pattern: "Wednesday, Jan 07 2026 Daily Setup Report"
+        pattern = r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+([A-Za-z]{3})\s+(\d{2})\s+(\d{4})"
+        match = re.search(pattern, text[:200])
+
+        if not match:
+            logger.warning("Could not extract report date from PDF")
+            return None
+
+        month_abbr, day, year = match.groups()
+        report_date = f"{day}-{month_abbr}-{year}"
+        logger.info(f"Extracted report date: {report_date}")
+        return report_date
+
     def parse_time(self, time_str: str) -> Optional[datetime]:
         """
         Parse time string to datetime object for sorting.
@@ -138,6 +170,36 @@ class SetupReportProcessor:
             except ValueError:
                 logger.warning(f"Could not parse time: {time_str}")
                 return None
+
+    def convert_to_24hour(self, time_str: str, reference_hour: int = 0) -> Optional[str]:
+        """
+        Convert 12-hour time to 24-hour format with midnight crossing support.
+
+        Args:
+            time_str: Time like "1:15 AM", "11:30 PM"
+            reference_hour: Previous event hour (0-23) for midnight crossing detection
+
+        Returns:
+            24-hour time like "01:15" or "25:00" (for next-day times)
+
+        Example:
+            >>> processor.convert_to_24hour("1:15 AM")
+            '01:15'
+            >>> processor.convert_to_24hour("2:00 AM", reference_hour=23)
+            '26:00'  # Next day notation for midnight crossing
+        """
+        dt = self.parse_time(time_str)
+        if not dt:
+            return None
+
+        hour_24 = dt.hour
+
+        # Handle midnight crossing: if this time is much earlier than reference,
+        # it's likely the next day (e.g., setup at 11 PM, closing at 2 AM)
+        if reference_hour >= 18 and hour_24 <= 6:  # Late night → early morning
+            hour_24 += 24  # Use next-day notation: 25:00, 26:00, etc.
+
+        return f"{hour_24:02d}:{dt.minute:02d}"
 
     def extract_events(self, text: str) -> List[Dict[str, str]]:
         """
@@ -364,7 +426,55 @@ class SetupReportProcessor:
 
         logger.info(f"Created {len(rows)} schedule rows from {len(events)} events")
         return rows
-    
+
+    def create_matlab_event_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """
+        Create single-row events for MATLAB CSV.
+        Each event becomes: Location, StartTime (24h), EndTime (24h)
+
+        Args:
+            events: List of event dictionaries with setup_time and closing_time
+
+        Returns:
+            List of row dictionaries with Location, StartTime, EndTime
+
+        Example:
+            >>> events = [{
+            ...     "event_name": "Test Event",
+            ...     "location": "UC 1227",
+            ...     "setup_time": "1:30 AM",
+            ...     "closing_time": "2:00 PM"
+            ... }]
+            >>> rows = processor.create_matlab_event_rows(events)
+            >>> rows[0]
+            {'Location': 'UC 1227', 'StartTime': '01:30', 'EndTime': '14:00'}
+        """
+        logger.info("Creating MATLAB event rows...")
+        rows = []
+
+        for event in events:
+            # Parse setup time to get reference hour for midnight crossing
+            setup_dt = self.parse_time(event["setup_time"])
+            if not setup_dt:
+                logger.warning(f"Skipping event '{event['event_name']}' - invalid setup time")
+                continue
+
+            start_time_24h = self.convert_to_24hour(event["setup_time"])
+            end_time_24h = self.convert_to_24hour(event["closing_time"], setup_dt.hour)
+
+            if not start_time_24h or not end_time_24h:
+                logger.warning(f"Skipping event '{event['event_name']}' - time conversion failed")
+                continue
+
+            rows.append({
+                "Location": event["location"],
+                "StartTime": start_time_24h,
+                "EndTime": end_time_24h
+            })
+
+        logger.info(f"Created {len(rows)} MATLAB event rows from {len(events)} events")
+        return rows
+
     def sort_chronologically(self, rows: List[Dict[str, str]]) -> pd.DataFrame:
         """
         Sort rows chronologically by time and create DataFrame.
@@ -421,9 +531,11 @@ class SetupReportProcessor:
 
         # Extract text from PDF
         text = self.extract_text_from_pdf()
+        self._pdf_text = text  # Store for MATLAB CSV
 
         # Parse events
         events = self.extract_events(text)
+        self._events = events  # Store for MATLAB CSV
 
         if not events:
             logger.warning("No valid events found in the PDF")
@@ -481,6 +593,139 @@ class SetupReportProcessor:
             logger.error(f"Error saving CSV file: {e}")
             raise
 
+    def save_to_matlab_csv(self, output_path: Optional[str] = None,
+                           auto_launch: bool = False,
+                           mlapp_path: Optional[str] = None) -> Optional[Path]:
+        """
+        Save events to MATLAB-formatted CSV and optionally launch app.
+
+        Format:
+        - Line 1: Date (DD-Mon-YYYY)
+        - Lines 2+: Location,StartTime,EndTime (no header)
+
+        Args:
+            output_path: Output CSV path (auto-generated if None)
+            auto_launch: Whether to launch MATLAB with GanttChartApp
+            mlapp_path: Path to GanttChartApp.mlapp (searches if None)
+
+        Returns:
+            Path to saved CSV, or None if failed
+
+        Raises:
+            ValueError: If process() hasn't been called yet
+        """
+        import csv
+
+        # Validate prerequisites
+        if self._events is None or self._pdf_text is None:
+            raise ValueError("Must call process() before save_to_matlab_csv()")
+
+        # Extract date
+        report_date = self.extract_report_date(self._pdf_text)
+        if not report_date:
+            report_date = datetime.now().strftime("%d-%b-%Y")
+            logger.warning(f"Using today's date as fallback: {report_date}")
+
+        # Create MATLAB rows
+        matlab_rows = self.create_matlab_event_rows(self._events)
+        if not matlab_rows:
+            logger.error("No valid events for MATLAB CSV")
+            return None
+
+        # Generate output path
+        if output_path is None:
+            output_path = self.pdf_path.stem + "_matlab.csv"
+        output_path = Path(output_path)
+
+        # Write CSV
+        try:
+            with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                # Line 1: Date only
+                f.write(f"{report_date}\n")
+
+                # Lines 2+: Data (Location, StartTime, EndTime)
+                writer = csv.writer(f)
+                for row in matlab_rows:
+                    writer.writerow([row['Location'], row['StartTime'], row['EndTime']])
+
+            logger.info(f"Saved MATLAB CSV: {output_path}")
+
+            # Optional auto-launch
+            if auto_launch:
+                self._launch_matlab_app(output_path, mlapp_path)
+
+            return output_path
+
+        except Exception as e:
+            logger.error(f"Error saving MATLAB CSV: {e}")
+            return None
+
+    def _launch_matlab_app(self, csv_path: Path, mlapp_path: Optional[str] = None) -> bool:
+        """
+        Launch MATLAB and open GanttChartApp with the CSV file.
+
+        Args:
+            csv_path: Path to the MATLAB CSV file
+            mlapp_path: Path to GanttChartApp.mlapp (searches if None)
+
+        Returns:
+            True if launched successfully
+        """
+        import subprocess
+        import sys
+
+        # Find .mlapp file if not provided
+        if mlapp_path is None:
+            # Search in current directory and parent
+            search_paths = [
+                Path.cwd() / "GanttChartApp.mlapp",
+                self.pdf_path.parent / "GanttChartApp.mlapp",
+            ]
+
+            for path in search_paths:
+                if path.exists():
+                    mlapp_path = str(path)
+                    break
+
+            if mlapp_path is None:
+                logger.error("GanttChartApp.mlapp not found. Searched: " +
+                            ", ".join(str(p) for p in search_paths))
+                return False
+
+        mlapp_path = Path(mlapp_path)
+        if not mlapp_path.exists():
+            logger.error(f"MATLAB app not found: {mlapp_path}")
+            return False
+
+        # Build MATLAB command
+        # Command: matlab -r "run('GanttChartApp.mlapp'); uiwait(gcf)"
+        matlab_cmd = [
+            "matlab",
+            "-r",
+            f"run('{mlapp_path.as_posix()}'); uiwait(gcf)"
+        ]
+
+        try:
+            logger.info(f"Launching MATLAB with {mlapp_path.name}...")
+
+            if sys.platform == "win32":
+                # Windows: use START to launch in background
+                subprocess.Popen(matlab_cmd, shell=True)
+            else:
+                # macOS/Linux
+                subprocess.Popen(matlab_cmd)
+
+            logger.info(f"MATLAB launched with CSV: {csv_path}")
+            logger.info("Note: You'll need to manually load the CSV in the app")
+            return True
+
+        except FileNotFoundError:
+            logger.error("MATLAB not found. Ensure MATLAB is installed and in PATH")
+            return False
+        except Exception as e:
+            logger.error(f"Error launching MATLAB: {e}")
+            return False
+
 
 def main():
     """Main entry point for the script."""
@@ -526,6 +771,25 @@ Examples:
     )
 
     parser.add_argument(
+        "--matlab-csv",
+        action="store_true",
+        help="Generate MATLAB CSV output (default: False)"
+    )
+
+    parser.add_argument(
+        "--matlab-launch",
+        action="store_true",
+        help="Auto-launch MATLAB with GanttChartApp (requires --matlab-csv)"
+    )
+
+    parser.add_argument(
+        "--matlab-app",
+        type=str,
+        default=None,
+        help="Path to GanttChartApp.mlapp (auto-detected if not specified)"
+    )
+
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose logging (DEBUG level)"
@@ -565,6 +829,23 @@ Examples:
         if args.csv:
             csv_path = args.output if args.output and args.output.endswith(".csv") else None
             processor.save_to_csv(df, csv_path)
+
+        if args.matlab_csv:
+            matlab_path = (
+                args.output if args.output and "_matlab.csv" in args.output
+                else None
+            )
+
+            result = processor.save_to_matlab_csv(
+                output_path=matlab_path,
+                auto_launch=args.matlab_launch,
+                mlapp_path=args.matlab_app
+            )
+
+            if result:
+                print(f"\nMATLAB CSV saved to: {result}")
+                if args.matlab_launch:
+                    print("Launching MATLAB...")
 
         print("\n" + "="*60)
         print("SUCCESS! Check the output files.")

@@ -13,6 +13,8 @@ GUI_DEFAULTS = {
     "output_dir": Path("./output"),
     "excel_enabled": True,
     "csv_enabled": False,
+    "matlab_csv_enabled": False,
+    "matlab_autolaunch": False,
     "verbose_logging": False,
     "max_log_lines": 1000,
     "poll_interval_ms": 100,  # How often to check processing queue

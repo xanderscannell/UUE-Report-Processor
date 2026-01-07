@@ -85,6 +85,21 @@ class ProcessorWorker(threading.Thread):
                     csv_path = output_dir / f"{pdf_path.stem}_schedule.csv"
                     processor.save_to_csv(df, str(csv_path))
 
+                if self.options["matlab_csv_enabled"]:
+                    matlab_path = output_dir / f"{pdf_path.stem}_matlab.csv"
+                    auto_launch = self.options.get("matlab_autolaunch", False)
+
+                    # Find .mlapp file
+                    mlapp_path = pdf_path.parent / "GanttChartApp.mlapp"
+                    if not mlapp_path.exists():
+                        mlapp_path = None
+
+                    processor.save_to_matlab_csv(
+                        output_path=str(matlab_path),
+                        auto_launch=auto_launch,
+                        mlapp_path=str(mlapp_path) if mlapp_path else None
+                    )
+
                 # Send progress update
                 progress = ((i + 1) / total_files) * 100
                 self.update_queue.put(("progress", (progress, i + 1, total_files)))
@@ -202,6 +217,8 @@ class SetupReportProcessorGUI:
 
         self.excel_var = tk.BooleanVar(value=GUI_DEFAULTS["excel_enabled"])
         self.csv_var = tk.BooleanVar(value=GUI_DEFAULTS["csv_enabled"])
+        self.matlab_csv_var = tk.BooleanVar(value=GUI_DEFAULTS["matlab_csv_enabled"])
+        self.matlab_autolaunch_var = tk.BooleanVar(value=GUI_DEFAULTS["matlab_autolaunch"])
 
         ttk.Checkbutton(
             formats_frame,
@@ -213,6 +230,18 @@ class SetupReportProcessorGUI:
             formats_frame,
             text="CSV (.csv)",
             variable=self.csv_var,
+        ).pack(side=tk.LEFT, padx=(0, 20))
+
+        ttk.Checkbutton(
+            formats_frame,
+            text="MATLAB CSV",
+            variable=self.matlab_csv_var,
+        ).pack(side=tk.LEFT, padx=(0, 20))
+
+        ttk.Checkbutton(
+            formats_frame,
+            text="Auto-launch MATLAB",
+            variable=self.matlab_autolaunch_var,
         ).pack(side=tk.LEFT)
 
         # Output folder selection
@@ -335,10 +364,10 @@ class SetupReportProcessorGUI:
     def _start_processing(self):
         """Start processing the queued files."""
         # Validate options
-        if not self.excel_var.get() and not self.csv_var.get():
+        if not self.excel_var.get() and not self.csv_var.get() and not self.matlab_csv_var.get():
             messagebox.showwarning(
                 "No Output Format",
-                "Please select at least one output format (Excel or CSV).",
+                "Please select at least one output format (Excel, CSV, or MATLAB CSV).",
             )
             return
 
@@ -351,6 +380,8 @@ class SetupReportProcessorGUI:
         options = {
             "excel_enabled": self.excel_var.get(),
             "csv_enabled": self.csv_var.get(),
+            "matlab_csv_enabled": self.matlab_csv_var.get(),
+            "matlab_autolaunch": self.matlab_autolaunch_var.get(),
             "output_dir": Path(self.output_dir_var.get()),
             "verbose": self.verbose_var.get(),
         }

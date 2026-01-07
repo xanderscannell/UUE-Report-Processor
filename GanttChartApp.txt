@@ -1,0 +1,238 @@
+classdef GanttChartApp < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure        matlab.ui.Figure
+        GridLayout      matlab.ui.container.GridLayout
+        LoadCSVButton   matlab.ui.control.Button
+        GanttChartAxes  matlab.ui.control.UIAxes
+    end
+
+    
+    properties (Access = public)
+        TimeIndicatorLine % MODIFIED: Removed strict type to prevent error
+        UpdateTimer       timer % Timer to trigger updates
+    end
+    
+    methods (Access = private)
+
+        % Function to draw/update the current time indicator line
+        function updateCurrentTimeIndicator(app)
+            % Delete the old line if it exists
+            if ~isempty(app.TimeIndicatorLine) && isvalid(app.TimeIndicatorLine)
+                delete(app.TimeIndicatorLine);
+            end
+            
+            % Get current time and convert to a fractional hour
+            now_dt = datetime('now');
+            currentHour = now_dt.Hour + now_dt.Minute/60 + now_dt.Second/3600;
+            
+            % Get the current y-axis limits to draw the line across the full height
+            yLimits = app.GanttChartAxes.YLim;
+            
+            % Draw the new red line for the current time
+            hold(app.GanttChartAxes, 'on');
+            app.TimeIndicatorLine = plot(app.GanttChartAxes, ...
+                [currentHour, currentHour], yLimits, ...
+                'r-', 'LineWidth', 1.5); % Red, solid line
+            hold(app.GanttChartAxes, 'off');            
+        end
+        
+        % Centralized function to set up the Gantt chart axes properties.
+        function setupGanttAxes(app)
+            title(app.GanttChartAxes, 'Event Schedule');
+            xlabel(app.GanttChartAxes, 'Time of Day');
+            ylabel(app.GanttChartAxes, 'Events');
+            
+            % Configure the axes to display from 6 AM to Midnight.
+            app.GanttChartAxes.XLim = [6 24];
+            
+            % Set major ticks to every hour for clarity.
+            ticks = 6:1:24;
+            app.GanttChartAxes.XTick = ticks;
+            
+            % Create custom labels for the major ticks in 12-hour AM/PM format.
+            labels = cell(size(ticks));
+            for i = 1:length(ticks)
+                hour = ticks(i);
+                if hour == 12
+                    labels{i} = '12 PM';
+                elseif hour == 24
+                    labels{i} = '12 AM'; % Midnight
+                elseif hour > 12
+                    labels{i} = sprintf('%d PM', hour - 12);
+                else
+                    labels{i} = sprintf('%d AM', hour);
+                end
+            end
+            app.GanttChartAxes.XTickLabel = labels;
+            
+            % Explicitly define minor ticks to be every half hour.
+            app.GanttChartAxes.XMinorTick = 'on';
+            app.GanttChartAxes.XAxis.MinorTickValues = 6.5:0.5:23.5;
+            app.GanttChartAxes.XMinorGrid = 'on';
+            
+            grid(app.GanttChartAxes, 'on');
+            app.GanttChartAxes.XGrid = 'on';
+            app.GanttChartAxes.YGrid = 'on';
+        end
+    end
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+            % Call the new helper function to set up the axes
+            app.setupGanttAxes();
+            
+            % --- Timer for Real-Time Indicator ---
+            app.UpdateTimer = timer(...
+                'ExecutionMode', 'fixedRate', ... % Run repeatedly
+                'Period', 60, ...                   % Update every 60 seconds
+                'TimerFcn', @(~,~) app.updateCurrentTimeIndicator());
+            start(app.UpdateTimer);
+            
+            % Initial call to draw the line immediately on startup
+            app.updateCurrentTimeIndicator();
+        end
+
+        % Button pushed function: LoadCSVButton
+        function LoadCSVButtonPushed(app, event)
+            [file, path] = uigetfile('*.csv', 'Select Event CSV File', fullfile('CSV Files'));
+            if isequal(file, 0)
+                return;
+            end
+            fullFileName = fullfile(path, file);
+            
+            try
+                opts = delimitedTextImportOptions('VariableNames', {'EventName', 'StartTime', 'EndTime'});
+                opts = setvartype(opts, {'StartTime', 'EndTime'}, 'duration');
+                opts.VariableOptions(2).InputFormat = 'hh:mm';
+                opts.VariableOptions(3).InputFormat = 'hh:mm';
+                ganttData = readtable(fullFileName, opts);
+                if isempty(ganttData)
+                    uialert(app.UIFigure, 'The selected CSV file is empty.', 'No Data');
+                    return;
+                end
+                
+                % Clear the axes plots, but keep properties like XLim, Ticks, etc.
+                cla(app.GanttChartAxes, 'reset'); 
+                
+                % --- MODIFIED ---
+                % Re-apply the axes settings (Title, Labels, Ticks, Grid)
+                app.setupGanttAxes();
+                
+                % Redraw time indicator after clearing the chart
+                app.updateCurrentTimeIndicator();
+                numEvents = height(ganttData);
+                eventNames = ganttData.EventName;
+                colors = lines(numEvents);
+                
+                for i = 1:numEvents
+                    startTime = ganttData.StartTime(i);
+                    endTime = ganttData.EndTime(i);
+                    startHour = hours(startTime);
+                    endHour = hours(endTime);
+                    if endHour < startHour
+                        endHour = endHour + 24;
+                    end
+                    yPos = i - 0.4;
+                    patch(app.GanttChartAxes, ...
+                          [startHour, endHour, endHour, startHour], ...
+                          [yPos, yPos, yPos + 0.8, yPos + 0.8], ...
+                          colors(i,:), 'EdgeColor', 'k');
+                end
+                
+                app.GanttChartAxes.YTick = 1:numEvents;
+                app.GanttChartAxes.YTickLabel = eventNames;
+                app.GanttChartAxes.YDir = 'reverse';
+                app.GanttChartAxes.YLim = [0.5, numEvents + 0.5];
+                % Title is already set by setupGanttAxes
+                
+                % Redraw time indicator again to match the new YLim
+                app.updateCurrentTimeIndicator();
+            catch ex
+                uialert(app.UIFigure, ['Error: ' ex.message], 'File Error');
+            end
+        end
+
+        % Close request function: UIFigure
+        function UIFigureCloseRequest(app, event)
+            % Stop and delete the timer
+            if ~isempty(app.UpdateTimer) && isvalid(app.UpdateTimer)
+                stop(app.UpdateTimer);
+                delete(app.UpdateTimer);
+            end
+            
+            % IMPORTANT: You must manually delete the figure now
+            delete(app.UIFigure);
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 640 480];
+            app.UIFigure.Name = 'MATLAB App';
+            app.UIFigure.CloseRequestFcn = createCallbackFcn(app, @UIFigureCloseRequest, true);
+
+            % Create GridLayout
+            app.GridLayout = uigridlayout(app.UIFigure);
+            app.GridLayout.ColumnWidth = {'1x'};
+            app.GridLayout.RowHeight = {40, '1x'};
+
+            % Create GanttChartAxes
+            app.GanttChartAxes = uiaxes(app.GridLayout);
+            title(app.GanttChartAxes, 'Title')
+            xlabel(app.GanttChartAxes, 'X')
+            ylabel(app.GanttChartAxes, 'Y')
+            zlabel(app.GanttChartAxes, 'Z')
+            app.GanttChartAxes.Layout.Row = 2;
+            app.GanttChartAxes.Layout.Column = 1;
+
+            % Create LoadCSVButton
+            app.LoadCSVButton = uibutton(app.GridLayout, 'push');
+            app.LoadCSVButton.ButtonPushedFcn = createCallbackFcn(app, @LoadCSVButtonPushed, true);
+            app.LoadCSVButton.Layout.Row = 1;
+            app.LoadCSVButton.Layout.Column = 1;
+            app.LoadCSVButton.Text = 'Load Event CSV File';
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = GanttChartApp
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end

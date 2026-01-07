@@ -5,7 +5,8 @@
       "Bash(git init:*)",
       "Bash(python test_installation.py:*)",
       "Bash(dir:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(python:*)"
     ]
   }
 }
