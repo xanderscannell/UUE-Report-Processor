@@ -85,50 +85,75 @@ classdef GanttChartApp < matlab.apps.AppBase
         function startupFcn(app)
             % Call the new helper function to set up the axes
             app.setupGanttAxes();
-            
+
             % --- Timer for Real-Time Indicator ---
             app.UpdateTimer = timer(...
                 'ExecutionMode', 'fixedRate', ... % Run repeatedly
                 'Period', 60, ...                   % Update every 60 seconds
                 'TimerFcn', @(~,~) app.updateCurrentTimeIndicator());
             start(app.UpdateTimer);
-            
+
             % Initial call to draw the line immediately on startup
             app.updateCurrentTimeIndicator();
+
+            % --- Auto-load CSV file if found ---
+            app.autoLoadCSV();
         end
 
-        % Button pushed function: LoadCSVButton
-        function LoadCSVButtonPushed(app, event)
-            [file, path] = uigetfile('*.csv', 'Select Event CSV File', fullfile('CSV Files'));
-            if isequal(file, 0)
-                return;
+        % Auto-load CSV file on startup
+        function autoLoadCSV(app)
+            % Search for *_matlab.csv files in common locations
+            searchPaths = {
+                fullfile(pwd, '*_matlab.csv'),           % Current directory
+                fullfile(pwd, 'output', '*_matlab.csv'), % Output subdirectory
+                fullfile(pwd, '..', '*_matlab.csv')      % Parent directory
+            };
+
+            csvFile = '';
+            for i = 1:length(searchPaths)
+                files = dir(searchPaths{i});
+                if ~isempty(files)
+                    % Sort by date modified (most recent first)
+                    [~, idx] = sort([files.datenum], 'descend');
+                    csvFile = fullfile(files(idx(1)).folder, files(idx(1)).name);
+                    break;
+                end
             end
-            fullFileName = fullfile(path, file);
-            
+
+            % If CSV found, load it automatically
+            if ~isempty(csvFile)
+                app.loadCSVFile(csvFile);
+            end
+        end
+
+        % Load and display CSV file
+        function loadCSVFile(app, fullFileName)
             try
+                % Skip the first line (date header) and read the data
                 opts = delimitedTextImportOptions('VariableNames', {'EventName', 'StartTime', 'EndTime'});
                 opts = setvartype(opts, {'StartTime', 'EndTime'}, 'duration');
                 opts.VariableOptions(2).InputFormat = 'hh:mm';
                 opts.VariableOptions(3).InputFormat = 'hh:mm';
+                opts.DataLines = [2 Inf]; % Skip first line (date header)
+
                 ganttData = readtable(fullFileName, opts);
                 if isempty(ganttData)
                     uialert(app.UIFigure, 'The selected CSV file is empty.', 'No Data');
                     return;
                 end
-                
+
                 % Clear the axes plots, but keep properties like XLim, Ticks, etc.
-                cla(app.GanttChartAxes, 'reset'); 
-                
-                % --- MODIFIED ---
+                cla(app.GanttChartAxes, 'reset');
+
                 % Re-apply the axes settings (Title, Labels, Ticks, Grid)
                 app.setupGanttAxes();
-                
+
                 % Redraw time indicator after clearing the chart
                 app.updateCurrentTimeIndicator();
                 numEvents = height(ganttData);
                 eventNames = ganttData.EventName;
                 colors = lines(numEvents);
-                
+
                 for i = 1:numEvents
                     startTime = ganttData.StartTime(i);
                     endTime = ganttData.EndTime(i);
@@ -143,18 +168,28 @@ classdef GanttChartApp < matlab.apps.AppBase
                           [yPos, yPos, yPos + 0.8, yPos + 0.8], ...
                           colors(i,:), 'EdgeColor', 'k');
                 end
-                
+
                 app.GanttChartAxes.YTick = 1:numEvents;
                 app.GanttChartAxes.YTickLabel = eventNames;
                 app.GanttChartAxes.YDir = 'reverse';
                 app.GanttChartAxes.YLim = [0.5, numEvents + 0.5];
-                % Title is already set by setupGanttAxes
-                
+
                 % Redraw time indicator again to match the new YLim
                 app.updateCurrentTimeIndicator();
             catch ex
                 uialert(app.UIFigure, ['Error: ' ex.message], 'File Error');
             end
+        end
+
+        % Button pushed function: LoadCSVButton
+        function LoadCSVButtonPushed(app, event)
+            [file, path] = uigetfile('*.csv', 'Select Event CSV File', fullfile('CSV Files'));
+            if isequal(file, 0)
+                return;
+            end
+            fullFileName = fullfile(path, file);
+
+            app.loadCSVFile(fullFileName);
         end
 
         % Close request function: UIFigure
