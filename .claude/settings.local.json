@@ -3,7 +3,9 @@
     "allow": [
       "Bash(move gitignore.txt .gitignore)",
       "Bash(git init:*)",
-      "Bash(python test_installation.py:*)"
+      "Bash(python test_installation.py:*)",
+      "Bash(dir:*)",
+      "Bash(chmod:*)"
     ]
   }
 }

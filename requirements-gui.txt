@@ -1,0 +1,7 @@
+# GUI-Specific Dependencies
+# =========================
+# Optional dependencies for the Setup Report Processor GUI
+
+# Enhanced drag-and-drop support (optional but recommended)
+# If this fails to install, the GUI will fall back to click-to-browse
+tkinterdnd2>=0.3.0
