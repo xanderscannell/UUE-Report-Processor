@@ -1,0 +1,16 @@
+# Daily Setup Report Processor - Requirements
+# ==========================================
+
+# PDF Processing
+pdfplumber==0.11.0
+
+# Data manipulation and analysis
+pandas==2.1.4
+
+# Excel file support
+openpyxl==3.1.2
+
+# Additional dependencies (automatically installed with above packages)
+# - Pillow (image processing, included with pdfplumber)
+# - pypdf (PDF backend, included with pdfplumber)
+# - numpy (numerical computing, included with pandas)
