@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(move gitignore.txt .gitignore)",
+      "Bash(git init:*)",
+      "Bash(python test_installation.py:*)"
+    ]
+  }
+}

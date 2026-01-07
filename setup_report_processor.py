@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 class SetupReportProcessor:
     """Process Daily Setup Report PDFs and extract event schedules."""
-    
+
     # Location filter configurations
     VALID_LOCATION_PREFIXES = [
         "UC ",
@@ -42,7 +42,7 @@ class SetupReportProcessor:
         "FCS 180",
         "FCS Dining Rm D"
     ]
-    
+
     EXCLUDED_LOCATIONS = [
         "UC Table-Bake/Day Sale",
         "UC Table-Info",
@@ -50,58 +50,84 @@ class SetupReportProcessor:
         "UC Table-Promo1 (default)",
         "UC Table-Promo2 (default)"
     ]
+
+    # Location text cleanup patterns
+    LOCATION_CLEANUP_PATTERNS = [
+        r"\s+See\s+.*$",           # Remove "See Diagram", "See Set Up Notes", etc.
+        r"\s+No\s+.*$",            # Remove "No food", "No AV needed", etc.
+        r"\s+Set up.*$",           # Remove setup instructions
+        r"\s+OSL\s+.*$",           # Remove OSL-specific text
+        r"\s+Check.*$",            # Remove "Check in with...", etc.
+        r"\s+This is.*$",          # Remove "This is a back-to-back..."
+        r"\s+Event is.*$",         # Remove "Event is not catered"
+        r"\s+no catering.*$",      # Remove "no catering at this event"
+        r"\s+\([^)]*default[^)]*\)$",  # Remove "(default)" markers
+        r"\s+Banquet Rounds.*$",   # Remove room setup descriptions
+        r"\s+Boardroom.*$",        # Remove room setup descriptions
+        r"\s+Cluster.*$",          # Remove room type descriptions
+        r"\s+Conference.*$",       # Remove room type descriptions
+        r"\s+Classroom.*$",        # Remove room type descriptions
+    ]
     
     def __init__(self, pdf_path: str):
         """
         Initialize the processor.
-        
+
         Args:
             pdf_path: Path to the PDF file to process
+
+        Raises:
+            FileNotFoundError: If the PDF file does not exist
+            ValueError: If the file is not a PDF
         """
         self.pdf_path = Path(pdf_path)
         if not self.pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
-        
+
+        if self.pdf_path.suffix.lower() != ".pdf":
+            raise ValueError(f"Expected PDF file, got: {self.pdf_path.suffix}")
+
         logger.info(f"Initialized processor for: {self.pdf_path}")
     
     def extract_text_from_pdf(self) -> str:
         """
         Extract all text from the PDF file.
-        
+
         Returns:
             Complete text content of the PDF
         """
         logger.info("Extracting text from PDF...")
-        text = ""
-        
+        pages = []
+
         try:
             with pdfplumber.open(self.pdf_path) as pdf:
                 for page_num, page in enumerate(pdf.pages, 1):
                     page_text = page.extract_text()
                     if page_text:
-                        text += page_text + "\n"
+                        pages.append(page_text)
                         logger.debug(f"Extracted text from page {page_num}")
         except Exception as e:
             logger.error(f"Error extracting text from PDF: {e}")
             raise
-        
+
+        text = "\n".join(pages)
         logger.info(f"Successfully extracted {len(text)} characters from PDF")
         return text
     
     def parse_time(self, time_str: str) -> Optional[datetime]:
         """
         Parse time string to datetime object for sorting.
-        
+
         Args:
             time_str: Time string like "7:30 AM", "12:00 PM", or "no setup time defined"
-            
+
         Returns:
             datetime object or None if parsing fails
         """
         # Handle special case
         if "no setup time defined" in time_str.lower():
             return None
-        
+
         try:
             # Try standard format
             return datetime.strptime(time_str.strip(), "%I:%M %p")
@@ -112,28 +138,28 @@ class SetupReportProcessor:
             except ValueError:
                 logger.warning(f"Could not parse time: {time_str}")
                 return None
-    
+
     def extract_events(self, text: str) -> List[Dict[str, str]]:
         """
         Extract event information from PDF text.
-        
+
         Args:
             text: Complete text content of the PDF
-            
+
         Returns:
             List of event dictionaries
         """
         logger.info("Parsing events from text...")
         events = []
-        
+
         # Split text into event blocks
-        # Pattern: Split on lines that contain "Setup Starts:" 
-        blocks = re.split(r'(?=\d{1,2}:\d{2} [AP]M Setup Starts:)', text)
-        
+        # Pattern: Split on lines that contain "Setup Starts:"
+        blocks = re.split(r"(?=\d{1,2}:\d{2} [AP]M Setup Starts:)", text)
+
         for block in blocks:
             if "Setup Starts:" not in block:
                 continue
-            
+
             try:
                 event_data = self._parse_event_block(block)
                 if event_data:
@@ -142,112 +168,155 @@ class SetupReportProcessor:
                 logger.warning(f"Error parsing event block: {e}")
                 logger.debug(f"Block content: {block[:200]}...")
                 continue
-        
+
         logger.info(f"Found {len(events)} total events in PDF")
         return events
     
-    def _parse_event_block(self, block: str) -> Optional[Dict[str, str]]:
+    def _extract_setup_time(self, block: str) -> Optional[str]:
         """
-        Parse a single event block to extract event details.
-        
+        Extract setup time from event block.
+
         Args:
-            block: Text block containing a single event
-            
+            block: Text block containing event data
+
         Returns:
-            Dictionary with event details or None if parsing fails
+            Setup time string or None if not found
         """
-        # Extract setup time (this is the "Setup Ready By" time)
-        # First check if there's a defined setup time
-        setup_match = re.search(r'^(\d{1,2}:\d{2} [AP]M) Setup Starts:', block, re.MULTILINE)
-        
+        setup_match = re.search(r"^(\d{1,2}:\d{2} [AP]M) Setup Starts:", block, re.MULTILINE)
+
         if setup_match:
-            setup_time = setup_match.group(1)
-        else:
-            # If no setup time, look for Pre-Event time
-            pre_event_match = re.search(r'Pre-Event:\s+(\d{1,2}:\d{2} [AP]M)', block)
-            if pre_event_match:
-                setup_time = pre_event_match.group(1)
-            else:
-                # Skip events without any setup time
-                logger.debug("Skipping event - no setup time found")
-                return None
-        
-        # Extract event name - more carefully
+            return setup_match.group(1)
+
+        # If no setup time, look for Pre-Event time
+        pre_event_match = re.search(r"Pre-Event:\s+(\d{1,2}:\d{2} [AP]M)", block)
+        if pre_event_match:
+            return pre_event_match.group(1)
+
+        return None
+
+    def _extract_event_name(self, block: str) -> Optional[str]:
+        """
+        Extract and clean event name from event block.
+
+        Args:
+            block: Text block containing event data
+
+        Returns:
+            Cleaned event name or None if not found
+        """
         # Handle both cases: with time and "no setup time defined"
         if "no setup time defined" in block:
-            # Pattern: Setup Starts: no setup time defined EVENT_NAME Requestor:
-            name_pattern = r'Setup Starts:\s*no setup time defined\s+(.+?)\s+Requestor:'
+            name_pattern = r"Setup Starts:\s*no setup time defined\s+(.+?)\s+Requestor:"
         else:
-            # Pattern: Setup Starts: [time] EVENT_NAME Requestor:
-            name_pattern = r'Setup Starts:\s*\d{1,2}:\d{2} [AP]M\s+(.+?)\s+Requestor:'
-        
+            name_pattern = r"Setup Starts:\s*\d{1,2}:\d{2} [AP]M\s+(.+?)\s+Requestor:"
+
         name_match = re.search(name_pattern, block)
         if not name_match:
             return None
+
         event_name = name_match.group(1).strip()
-        
+
         # Remove reference codes (like "2025-AANQFM") from event name
-        event_name = re.sub(r'\s*\d{4}-[A-Z0-9]+\s*$', '', event_name).strip()
-        
-        # Extract event time range (start and end times)
-        time_match = re.search(r'Event:\s+(\d{1,2}:\d{2} [AP]M)\s+-\s+(\d{1,2}:\d{2} [AP]M)', block)
+        event_name = re.sub(r"\s*\d{4}-[A-Z0-9]+\s*$", "", event_name).strip()
+
+        return event_name
+
+    def _extract_event_times(self, block: str) -> Optional[tuple[str, str]]:
+        """
+        Extract event start and end times from event block.
+
+        Args:
+            block: Text block containing event data
+
+        Returns:
+            Tuple of (start_time, end_time) or None if not found
+        """
+        time_match = re.search(r"Event:\s+(\d{1,2}:\d{2} [AP]M)\s+-\s+(\d{1,2}:\d{2} [AP]M)", block)
         if not time_match:
             return None
-        event_start = time_match.group(1)
-        event_end = time_match.group(2)
-        
-        # Extract location - get the first line after "Location Layout Instructions"
-        location_match = re.search(r'Location Layout Instructions\s*\n([^\n]+)', block)
+
+        return (time_match.group(1), time_match.group(2))
+
+    def _extract_location(self, block: str) -> Optional[str]:
+        """
+        Extract and clean location from event block.
+
+        Args:
+            block: Text block containing event data
+
+        Returns:
+            Cleaned location string or None if not found/invalid
+        """
+        location_match = re.search(r"Location Layout Instructions\s*\n([^\n]+)", block)
         if not location_match:
             return None
-        
+
         location = location_match.group(1).strip()
-        
-        # Clean up location - remove extra descriptive text more aggressively
-        # Common patterns to remove
-        cleanup_patterns = [
-            r'\s+See\s+.*$',           # Remove "See Diagram", "See Set Up Notes", etc.
-            r'\s+No\s+.*$',            # Remove "No food", "No AV needed", etc.
-            r'\s+Set up.*$',           # Remove setup instructions
-            r'\s+OSL\s+.*$',           # Remove OSL-specific text
-            r'\s+Check.*$',            # Remove "Check in with...", etc.
-            r'\s+This is.*$',          # Remove "This is a back-to-back..."
-            r'\s+Event is.*$',         # Remove "Event is not catered"
-            r'\s+no catering.*$',      # Remove "no catering at this event"
-            r'\s+\([^)]*default[^)]*\)$',  # Remove "(default)" markers
-            r'\s+Banquet Rounds.*$',   # Remove room setup descriptions
-            r'\s+Boardroom.*$',        # Remove room setup descriptions  
-            r'\s+Cluster.*$',          # Remove room type descriptions
-            r'\s+Conference.*$',       # Remove room type descriptions
-            r'\s+Classroom.*$',        # Remove room type descriptions
-        ]
-        
-        for pattern in cleanup_patterns:
-            location = re.sub(pattern, '', location, flags=re.IGNORECASE).strip()
-        
+
+        # Clean up location using class constants
+        for pattern in self.LOCATION_CLEANUP_PATTERNS:
+            location = re.sub(pattern, "", location, flags=re.IGNORECASE).strip()
+
         # If location is now empty, return None
         if not location:
             return None
-        
+
+        return location
+
+    def _parse_event_block(self, block: str) -> Optional[Dict[str, str]]:
+        """
+        Parse a single event block to extract event details.
+
+        Args:
+            block: Text block containing a single event
+
+        Returns:
+            Dictionary with event details or None if parsing fails
+        """
+        # Extract setup time
+        setup_time = self._extract_setup_time(block)
+        if not setup_time:
+            logger.debug("Skipping event - no setup time found")
+            return None
+
+        # Extract event name
+        event_name = self._extract_event_name(block)
+        if not event_name:
+            logger.debug("Skipping event - no event name found")
+            return None
+
+        # Extract event time range
+        event_times = self._extract_event_times(block)
+        if not event_times:
+            logger.debug(f"Skipping event '{event_name}' - no event times found")
+            return None
+        event_start, event_end = event_times
+
+        # Extract location
+        location = self._extract_location(block)
+        if not location:
+            logger.debug(f"Skipping event '{event_name}' - no valid location found")
+            return None
+
         # Check if this location should be included
         if not self._is_valid_location(location):
             logger.debug(f"Skipping event '{event_name}' - location '{location}' does not match criteria")
             return None
-        
+
         return {
-            'event_name': event_name,
-            'location': location,
-            'setup_time': setup_time,
-            'closing_time': event_end
+            "event_name": event_name,
+            "location": location,
+            "setup_time": setup_time,
+            "closing_time": event_end
         }
     
     def _is_valid_location(self, location: str) -> bool:
         """
         Check if a location matches the filter criteria.
-        
+
         Args:
             location: Location string to check
-            
+
         Returns:
             True if location should be included, False otherwise
         """
@@ -255,152 +324,156 @@ class SetupReportProcessor:
         for excluded in self.EXCLUDED_LOCATIONS:
             if excluded.lower() in location.lower():
                 return False
-        
+
         # Check if location starts with valid prefix
         for prefix in self.VALID_LOCATION_PREFIXES:
             if location.startswith(prefix):
                 return True
-        
+
         return False
-    
+
     def create_schedule_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
         Create two rows for each event (Setup Ready By and Closing).
-        
+
         Args:
             events: List of event dictionaries
-            
+
         Returns:
             List of row dictionaries for the schedule
         """
         logger.info("Creating schedule rows...")
         rows = []
-        
+
         for event in events:
             # Setup Ready By row
             rows.append({
-                'Event Name': event['event_name'],
-                'Location': event['location'],
-                'Activity': 'Setup Ready By',
-                'Time': event['setup_time']
+                "Event Name": event["event_name"],
+                "Location": event["location"],
+                "Activity": "Setup Ready By",
+                "Time": event["setup_time"]
             })
-            
+
             # Closing row
             rows.append({
-                'Event Name': event['event_name'],
-                'Location': event['location'],
-                'Activity': 'Closing',
-                'Time': event['closing_time']
+                "Event Name": event["event_name"],
+                "Location": event["location"],
+                "Activity": "Closing",
+                "Time": event["closing_time"]
             })
-        
+
         logger.info(f"Created {len(rows)} schedule rows from {len(events)} events")
         return rows
     
     def sort_chronologically(self, rows: List[Dict[str, str]]) -> pd.DataFrame:
         """
         Sort rows chronologically by time and create DataFrame.
-        
+
         Args:
             rows: List of row dictionaries
-            
+
         Returns:
             Sorted pandas DataFrame
         """
         logger.info("Sorting rows chronologically...")
-        
+
         if not rows:
             logger.warning("No rows to sort")
-            return pd.DataFrame(columns=['Event Name', 'Location', 'Activity', 'Time'])
-        
+            return pd.DataFrame(columns=["Event Name", "Location", "Activity", "Time"])
+
         df = pd.DataFrame(rows)
-        
+
         # Create a datetime column for sorting
-        df['_sort_time'] = df['Time'].apply(self.parse_time)
-        
-        # Remove rows where time couldn't be parsed
-        invalid_times = df['_sort_time'].isna().sum()
-        if invalid_times > 0:
-            logger.warning(f"Removed {invalid_times} rows with invalid times")
-            df = df.dropna(subset=['_sort_time'])
-        
+        df["_sort_time"] = df["Time"].apply(self.parse_time)
+
+        # Log and remove rows where time couldn't be parsed
+        invalid_mask = df["_sort_time"].isna()
+        invalid_count = invalid_mask.sum()
+
+        if invalid_count > 0:
+            logger.warning(f"Found {invalid_count} rows with invalid times:")
+            for idx, row in df[invalid_mask].iterrows():
+                logger.warning(f"  - Event: '{row['Event Name']}', Activity: {row['Activity']}, Time: '{row['Time']}'")
+            df = df.dropna(subset=["_sort_time"])
+
         # Sort by time
-        df = df.sort_values('_sort_time')
-        
+        df = df.sort_values("_sort_time")
+
         # Drop the sorting column
-        df = df.drop(columns=['_sort_time'])
-        
+        df = df.drop(columns=["_sort_time"])
+
         # Reset index
         df = df.reset_index(drop=True)
-        
+
         logger.info(f"Final schedule has {len(df)} rows")
         return df
     
     def process(self) -> pd.DataFrame:
         """
         Main processing method - orchestrates the entire workflow.
-        
+
         Returns:
             Processed DataFrame with schedule
         """
         logger.info("="*60)
         logger.info("Starting report processing")
         logger.info("="*60)
-        
+
         # Extract text from PDF
         text = self.extract_text_from_pdf()
-        
+
         # Parse events
         events = self.extract_events(text)
-        
+
         if not events:
             logger.warning("No valid events found in the PDF")
-            return pd.DataFrame(columns=['Event Name', 'Location', 'Activity', 'Time'])
-        
+            return pd.DataFrame(columns=["Event Name", "Location", "Activity", "Time"])
+
         # Create schedule rows
         rows = self.create_schedule_rows(events)
-        
+
         # Sort chronologically
         df = self.sort_chronologically(rows)
-        
+
         logger.info("="*60)
         logger.info("Processing complete!")
         logger.info("="*60)
-        
+
         return df
-    
+
     def save_to_excel(self, df: pd.DataFrame, output_path: Optional[str] = None):
         """
         Save DataFrame to Excel file.
-        
+
         Args:
             df: DataFrame to save
             output_path: Output file path (auto-generated if None)
         """
         if output_path is None:
             output_path = self.pdf_path.stem + "_schedule.xlsx"
-        
+
         output_path = Path(output_path)
-        
+
         try:
-            df.to_excel(output_path, index=False, engine='openpyxl')
+            df.to_excel(output_path, index=False, engine="openpyxl")
             logger.info(f"Saved Excel file: {output_path}")
         except Exception as e:
             logger.error(f"Error saving Excel file: {e}")
             raise
-    
+
     def save_to_csv(self, df: pd.DataFrame, output_path: Optional[str] = None):
         """
         Save DataFrame to CSV file.
-        
+
         Args:
             df: DataFrame to save
             output_path: Output file path (auto-generated if None)
         """
         if output_path is None:
             output_path = self.pdf_path.stem + "_schedule.csv"
-        
+
         output_path = Path(output_path)
-        
+
         try:
             df.to_csv(output_path, index=False)
             logger.info(f"Saved CSV file: {output_path}")
@@ -412,7 +485,7 @@ class SetupReportProcessor:
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
-        description='Extract event schedules from Daily Setup Report PDFs',
+        description="Extract event schedules from Daily Setup Report PDFs",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -422,86 +495,86 @@ Examples:
   %(prog)s report.pdf --output custom_name.xlsx --verbose
         """
     )
-    
+
     parser.add_argument(
-        'pdf_file',
-        help='Path to the PDF file to process'
+        "pdf_file",
+        help="Path to the PDF file to process"
     )
-    
+
     parser.add_argument(
-        '-o', '--output',
-        help='Output file path (auto-generated if not specified)'
+        "-o", "--output",
+        help="Output file path (auto-generated if not specified)"
     )
-    
+
     parser.add_argument(
-        '--excel',
-        action='store_true',
+        "--excel",
+        action="store_true",
         default=True,
-        help='Generate Excel output (default: True)'
+        help="Generate Excel output (default: True)"
     )
-    
+
     parser.add_argument(
-        '--csv',
-        action='store_true',
-        help='Generate CSV output (default: False)'
+        "--csv",
+        action="store_true",
+        help="Generate CSV output (default: False)"
     )
-    
+
     parser.add_argument(
-        '--no-excel',
-        action='store_true',
-        help='Disable Excel output'
+        "--no-excel",
+        action="store_true",
+        help="Disable Excel output"
     )
-    
+
     parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='Enable verbose logging (DEBUG level)'
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose logging (DEBUG level)"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Set logging level
     if args.verbose:
         logger.setLevel(logging.DEBUG)
-    
+
     try:
         # Initialize processor
         processor = SetupReportProcessor(args.pdf_file)
-        
+
         # Process the PDF
         df = processor.process()
-        
+
         # Display summary
         print("\n" + "="*60)
         print("PROCESSING SUMMARY")
         print("="*60)
         print(f"Total events found: {len(df) // 2}")
         print(f"Total schedule entries: {len(df)}")
-        
+
         if len(df) > 0:
             print("\nFirst 5 entries:")
             print(df.head().to_string(index=False))
             print("\nLast 5 entries:")
             print(df.tail().to_string(index=False))
-        
+
         # Save output files
         if not args.no_excel:
-            excel_path = args.output if args.output and args.output.endswith('.xlsx') else None
+            excel_path = args.output if args.output and args.output.endswith(".xlsx") else None
             processor.save_to_excel(df, excel_path)
-        
+
         if args.csv:
-            csv_path = args.output if args.output and args.output.endswith('.csv') else None
+            csv_path = args.output if args.output and args.output.endswith(".csv") else None
             processor.save_to_csv(df, csv_path)
-        
+
         print("\n" + "="*60)
         print("SUCCESS! Check the output files.")
         print("="*60 + "\n")
-        
+
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
         print(f"\nERROR: {e}")
         return 1
-    
+
     return 0
 
 
