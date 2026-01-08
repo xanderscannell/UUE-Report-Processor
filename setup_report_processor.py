@@ -88,7 +88,6 @@ class SetupReportProcessor:
             raise ValueError(f"Expected PDF file, got: {self.pdf_path.suffix}")
 
         # Store intermediate data for MATLAB CSV generation
-        self._pdf_text = None
         self._events = None
 
         logger.info(f"Initialized processor for: {self.pdf_path}")
@@ -117,34 +116,6 @@ class SetupReportProcessor:
         text = "\n".join(pages)
         logger.info(f"Successfully extracted {len(text)} characters from PDF")
         return text
-
-    def extract_report_date(self, text: str) -> Optional[str]:
-        """
-        Extract report date from PDF and format as DD-Mon-YYYY.
-
-        Args:
-            text: Complete text content of the PDF
-
-        Returns:
-            Date string in format "DD-Mon-YYYY" (e.g., "07-Jan-2026") or None if not found
-
-        Example:
-            >>> text = "Wednesday, Jan 07 2026 Daily Setup Report\\n..."
-            >>> processor.extract_report_date(text)
-            '07-Jan-2026'
-        """
-        # Pattern: "Wednesday, Jan 07 2026 Daily Setup Report"
-        pattern = r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+([A-Za-z]{3})\s+(\d{2})\s+(\d{4})"
-        match = re.search(pattern, text[:200])
-
-        if not match:
-            logger.warning("Could not extract report date from PDF")
-            return None
-
-        month_abbr, day, year = match.groups()
-        report_date = f"{day}-{month_abbr}-{year}"
-        logger.info(f"Extracted report date: {report_date}")
-        return report_date
 
     def parse_time(self, time_str: str) -> Optional[datetime]:
         """
@@ -531,7 +502,6 @@ class SetupReportProcessor:
 
         # Extract text from PDF
         text = self.extract_text_from_pdf()
-        self._pdf_text = text  # Store for MATLAB CSV
 
         # Parse events
         events = self.extract_events(text)
@@ -600,8 +570,7 @@ class SetupReportProcessor:
         Save events to MATLAB-formatted CSV and optionally launch app.
 
         Format:
-        - Line 1: Date (DD-Mon-YYYY)
-        - Lines 2+: Location,StartTime,EndTime (no header)
+        - Location,StartTime,EndTime (no header)
 
         Args:
             output_path: Output CSV path (auto-generated if None)
@@ -617,14 +586,8 @@ class SetupReportProcessor:
         import csv
 
         # Validate prerequisites
-        if self._events is None or self._pdf_text is None:
+        if self._events is None:
             raise ValueError("Must call process() before save_to_matlab_csv()")
-
-        # Extract date
-        report_date = self.extract_report_date(self._pdf_text)
-        if not report_date:
-            report_date = datetime.now().strftime("%d-%b-%Y")
-            logger.warning(f"Using today's date as fallback: {report_date}")
 
         # Create MATLAB rows
         matlab_rows = self.create_matlab_event_rows(self._events)
@@ -640,10 +603,7 @@ class SetupReportProcessor:
         # Write CSV
         try:
             with open(output_path, 'w', newline='', encoding='utf-8') as f:
-                # Line 1: Date only
-                f.write(f"{report_date}\n")
-
-                # Lines 2+: Data (Location, StartTime, EndTime)
+                # Write data (Location, StartTime, EndTime)
                 writer = csv.writer(f)
                 for row in matlab_rows:
                     writer.writerow([row['Location'], row['StartTime'], row['EndTime']])
