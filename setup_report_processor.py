@@ -662,25 +662,35 @@ class SetupReportProcessor:
             return False
 
         # Build MATLAB command
-        # Command: matlab -r "run('GanttChartApp.mlapp'); uiwait(gcf)"
+        # Command: matlab -r "run('GanttChartApp.mlapp')"
+        # CSV path is passed via GANTT_CSV_PATH environment variable
         matlab_cmd = [
             "matlab",
             "-r",
-            f"run('{mlapp_path.as_posix()}'); uiwait(gcf)"
+            f"run('{mlapp_path.as_posix()}')"
         ]
 
         try:
             logger.info(f"Launching MATLAB with {mlapp_path.name}...")
 
+            # Set environment variable with CSV path for MATLAB to read
+            import os
+            env = os.environ.copy()
+            csv_full_path = str(csv_path.resolve())
+            env['GANTT_CSV_PATH'] = csv_full_path
+
+            logger.info(f"Setting GANTT_CSV_PATH environment variable to: {csv_full_path}")
+            logger.info(f"CSV file exists: {csv_path.exists()}")
+
             if sys.platform == "win32":
                 # Windows: use START to launch in background
-                subprocess.Popen(matlab_cmd, shell=True)
+                subprocess.Popen(matlab_cmd, shell=True, env=env)
             else:
                 # macOS/Linux
-                subprocess.Popen(matlab_cmd)
+                subprocess.Popen(matlab_cmd, env=env)
 
             logger.info(f"MATLAB launched with CSV: {csv_path}")
-            logger.info("Note: You'll need to manually load the CSV in the app")
+            logger.info("CSV file will be loaded automatically in the app")
             return True
 
         except FileNotFoundError:
