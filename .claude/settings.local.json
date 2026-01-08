@@ -6,7 +6,8 @@
       "Bash(python test_installation.py:*)",
       "Bash(dir:*)",
       "Bash(chmod:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(cat:*)"
     ]
   }
 }

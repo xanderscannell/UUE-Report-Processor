@@ -218,7 +218,11 @@ class SetupReportProcessor:
         setup_match = re.search(r"^(\d{1,2}:\d{2} [AP]M) Setup Starts:", block, re.MULTILINE)
 
         if setup_match:
-            return setup_match.group(1)
+            # Check if this is a "no setup time defined" case
+            # If so, skip this match and use Pre-Event time instead
+            if "Setup Starts: no setup time defined" not in block:
+                return setup_match.group(1)
+            # Otherwise, fall through to Pre-Event
 
         # If no setup time, look for Pre-Event time
         pre_event_match = re.search(r"Pre-Event:\s+(\d{1,2}:\d{2} [AP]M)", block)
