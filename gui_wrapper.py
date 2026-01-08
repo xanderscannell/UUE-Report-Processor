@@ -78,15 +78,15 @@ class ProcessorWorker(threading.Thread):
                 output_dir.mkdir(parents=True, exist_ok=True)
 
                 if self.options["excel_enabled"]:
-                    excel_path = output_dir / f"{pdf_path.stem}_schedule.xlsx"
+                    excel_path = output_dir / f"{processor.get_output_basename()}_schedule.xlsx"
                     processor.save_to_excel(df, str(excel_path))
 
                 if self.options["csv_enabled"]:
-                    csv_path = output_dir / f"{pdf_path.stem}_schedule.csv"
+                    csv_path = output_dir / f"{processor.get_output_basename()}_schedule.csv"
                     processor.save_to_csv(df, str(csv_path))
 
                 if self.options["matlab_csv_enabled"]:
-                    matlab_path = output_dir / f"{pdf_path.stem}_matlab.csv"
+                    matlab_path = output_dir / f"{processor.get_output_basename()}_matlab.csv"
                     auto_launch = self.options.get("matlab_autolaunch", False)
 
                     # Find .mlapp file

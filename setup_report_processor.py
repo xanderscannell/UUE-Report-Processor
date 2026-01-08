@@ -90,6 +90,13 @@ class SetupReportProcessor:
         # Store intermediate data for MATLAB CSV generation
         self._events = None
 
+        # Extract report date for filename generation
+        self.report_date = self.extract_report_date()
+        if self.report_date:
+            logger.info(f"Extracted report date: {self.report_date}")
+        else:
+            logger.warning("Could not extract report date from PDF, will use PDF filename")
+
         logger.info(f"Initialized processor for: {self.pdf_path}")
     
     def extract_text_from_pdf(self) -> str:
@@ -116,6 +123,80 @@ class SetupReportProcessor:
         text = "\n".join(pages)
         logger.info(f"Successfully extracted {len(text)} characters from PDF")
         return text
+
+    def extract_report_date(self) -> Optional[str]:
+        """
+        Extract report date from first page and format as MM-DD-YY.
+
+        Searches for date pattern like "Wednesday, Jan 07 2026" on the
+        first page of the PDF and converts it to MM-DD-YY format.
+
+        Returns:
+            Formatted date string (e.g., "01-07-26") or None if not found
+
+        Example:
+            >>> processor = SetupReportProcessor("report.pdf")
+            >>> processor.extract_report_date()
+            '01-07-26'
+        """
+        try:
+            with pdfplumber.open(self.pdf_path) as pdf:
+                if not pdf.pages:
+                    logger.warning("PDF has no pages")
+                    return None
+
+                # Extract first page text
+                first_page_text = pdf.pages[0].extract_text()
+                if not first_page_text:
+                    logger.warning("First page is empty")
+                    return None
+
+                # Search for date pattern: "Wednesday, Jan 07 2026"
+                pattern = r"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})"
+                match = re.search(pattern, first_page_text)
+
+                if not match:
+                    logger.warning("Date pattern not found on first page")
+                    return None
+
+                month_abbr, day, year = match.groups()
+
+                # Parse the date
+                date_str = f"{month_abbr} {day} {year}"
+                report_date = datetime.strptime(date_str, "%b %d %Y")
+
+                # Format as MM-DD-YY
+                formatted_date = report_date.strftime("%m-%d-%y")
+                logger.debug(f"Parsed date: {date_str} -> {formatted_date}")
+
+                return formatted_date
+
+        except ValueError as e:
+            logger.warning(f"Invalid date format: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"Error extracting report date: {e}")
+            return None
+
+    def get_output_basename(self) -> str:
+        """
+        Get the base name for output files.
+
+        Returns the report date in MM-DD-YY format if available,
+        otherwise falls back to the PDF filename stem.
+
+        Returns:
+            Base filename string (either date or PDF name)
+
+        Example:
+            >>> processor.report_date = "01-07-26"
+            >>> processor.get_output_basename()
+            '01-07-26'
+            >>> processor.report_date = None
+            >>> processor.get_output_basename()
+            'daily_report'
+        """
+        return self.report_date if self.report_date else self.pdf_path.stem
 
     def parse_time(self, time_str: str) -> Optional[datetime]:
         """
@@ -536,7 +617,7 @@ class SetupReportProcessor:
             output_path: Output file path (auto-generated if None)
         """
         if output_path is None:
-            output_path = self.pdf_path.stem + "_schedule.xlsx"
+            output_path = self.get_output_basename() + "_schedule.xlsx"
 
         output_path = Path(output_path)
 
@@ -556,7 +637,7 @@ class SetupReportProcessor:
             output_path: Output file path (auto-generated if None)
         """
         if output_path is None:
-            output_path = self.pdf_path.stem + "_schedule.csv"
+            output_path = self.get_output_basename() + "_schedule.csv"
 
         output_path = Path(output_path)
 
@@ -601,7 +682,7 @@ class SetupReportProcessor:
 
         # Generate output path
         if output_path is None:
-            output_path = self.pdf_path.stem + "_matlab.csv"
+            output_path = self.get_output_basename() + "_matlab.csv"
         output_path = Path(output_path)
 
         # Write CSV
