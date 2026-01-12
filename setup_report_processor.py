@@ -74,7 +74,6 @@ class SetupReportProcessor:
         r"\s+U-Shape.*$",          # Remove room setup: U-Shape
         r"\s+Hollow\s+Square.*$",  # Remove room setup: Hollow Square
         r"\s+Reception.*$",        # Remove room setup: Reception
-        r"\s+[A-Z][A-Z\s]{10,}.*$",  # Remove all-caps instruction text (10+ caps/spaces)
     ]
     
     def __init__(self, pdf_path: str):
