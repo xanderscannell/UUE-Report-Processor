@@ -46,9 +46,10 @@ class SetupReportProcessor:
     EXCLUDED_LOCATIONS = [
         "UC Table-Bake/Day Sale",
         "UC Table-Info",
+        "UC Table-Promo1",
+        "UC Table-Promo2",
         "UC Lounge (default)",
-        "UC Table-Promo1 (default)",
-        "UC Table-Promo2 (default)"
+        "UC Lounge"
     ]
 
     # Location text cleanup patterns
@@ -61,12 +62,19 @@ class SetupReportProcessor:
         r"\s+This is.*$",          # Remove "This is a back-to-back..."
         r"\s+Event is.*$",         # Remove "Event is not catered"
         r"\s+no catering.*$",      # Remove "no catering at this event"
-        r"\s+\([^)]*default[^)]*\)$",  # Remove "(default)" markers
-        r"\s+Banquet Rounds.*$",   # Remove room setup descriptions
-        r"\s+Boardroom.*$",        # Remove room setup descriptions
-        r"\s+Cluster.*$",          # Remove room type descriptions
-        r"\s+Conference.*$",       # Remove room type descriptions
-        r"\s+Classroom.*$",        # Remove room type descriptions
+        r"\s+\([^)]*default[^)]*\)",  # Remove "(default)" markers (with or without content after)
+        r"\s+\(default\)",         # Remove plain "(default)" markers
+        r"\s+Banquet Rounds.*$",   # Remove room setup: Banquet Rounds
+        r"\s+Boardroom.*$",        # Remove room setup: Boardroom
+        r"\s+Cluster.*$",          # Remove room setup: Cluster
+        r"\s+Conference\s+Square.*$",  # Remove room setup: Conference Square
+        r"\s+Conference.*$",       # Remove room setup: Conference (general)
+        r"\s+Classroom.*$",        # Remove room setup: Classroom
+        r"\s+Theater\s+Style.*$",  # Remove room setup: Theater Style
+        r"\s+U-Shape.*$",          # Remove room setup: U-Shape
+        r"\s+Hollow\s+Square.*$",  # Remove room setup: Hollow Square
+        r"\s+Reception.*$",        # Remove room setup: Reception
+        r"\s+[A-Z][A-Z\s]{10,}.*$",  # Remove all-caps instruction text (10+ caps/spaces)
     ]
     
     def __init__(self, pdf_path: str):
@@ -290,6 +298,11 @@ class SetupReportProcessor:
         """
         Extract setup time from event block.
 
+        Falls back in this order:
+        1. Setup Starts time (if defined)
+        2. Pre-Event time (if defined)
+        3. Event start time (as last resort)
+
         Args:
             block: Text block containing event data
 
@@ -309,6 +322,12 @@ class SetupReportProcessor:
         pre_event_match = re.search(r"Pre-Event:\s+(\d{1,2}:\d{2} [AP]M)", block)
         if pre_event_match:
             return pre_event_match.group(1)
+
+        # If neither setup nor pre-event time exists, use Event start time
+        event_match = re.search(r"Event:\s+(\d{1,2}:\d{2} [AP]M)\s+-", block)
+        if event_match:
+            logger.debug(f"Using Event start time as fallback: {event_match.group(1)}")
+            return event_match.group(1)
 
         return None
 
