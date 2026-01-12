@@ -273,6 +273,7 @@ class SetupReportProcessor:
         """
         logger.info("Parsing events from text...")
         events = []
+        total_blocks = 0
 
         # Split text into event blocks
         # Pattern: Split on lines that contain "Setup Starts:"
@@ -282,6 +283,7 @@ class SetupReportProcessor:
             if "Setup Starts:" not in block:
                 continue
 
+            total_blocks += 1
             try:
                 event_data = self._parse_event_block(block)
                 if event_data:
@@ -291,7 +293,8 @@ class SetupReportProcessor:
                 logger.debug(f"Block content: {block[:200]}...")
                 continue
 
-        logger.info(f"Found {len(events)} total events in PDF")
+        excluded_count = total_blocks - len(events)
+        logger.info(f"Found {len(events)} valid events in PDF (excluded {excluded_count} events)")
         return events
     
     def _extract_setup_time(self, block: str) -> Optional[str]:
@@ -413,31 +416,31 @@ class SetupReportProcessor:
         # Extract setup time
         setup_time = self._extract_setup_time(block)
         if not setup_time:
-            logger.debug("Skipping event - no setup time found")
+            logger.info("EXCLUDED: Event with no setup/pre-event/event time")
             return None
 
         # Extract event name
         event_name = self._extract_event_name(block)
         if not event_name:
-            logger.debug("Skipping event - no event name found")
+            logger.info("EXCLUDED: Event with no name found")
             return None
 
         # Extract event time range
         event_times = self._extract_event_times(block)
         if not event_times:
-            logger.debug(f"Skipping event '{event_name}' - no event times found")
+            logger.info(f"EXCLUDED: '{event_name}' - no event times found")
             return None
         event_start, event_end = event_times
 
         # Extract location
         location = self._extract_location(block)
         if not location:
-            logger.debug(f"Skipping event '{event_name}' - no valid location found")
+            logger.info(f"EXCLUDED: '{event_name}' - no valid location found")
             return None
 
         # Check if this location should be included
         if not self._is_valid_location(location):
-            logger.debug(f"Skipping event '{event_name}' - location '{location}' does not match criteria")
+            logger.info(f"EXCLUDED: '{event_name}' at '{location}' - location not in whitelist or is blacklisted")
             return None
 
         return {
