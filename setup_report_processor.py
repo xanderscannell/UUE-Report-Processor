@@ -74,6 +74,7 @@ class SetupReportProcessor:
         r"\s+U-Shape.*$",          # Remove room setup: U-Shape
         r"\s+Hollow\s+Square.*$",  # Remove room setup: Hollow Square
         r"\s+Reception.*$",        # Remove room setup: Reception
+        r"\s+Empty.*$",            # Remove room setup: Empty
     ]
     
     def __init__(self, pdf_path: str):
