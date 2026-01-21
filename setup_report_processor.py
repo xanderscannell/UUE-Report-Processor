@@ -277,7 +277,7 @@ class SetupReportProcessor:
 
         # Split text into event blocks
         # Pattern: Split on lines that contain "Setup Starts:"
-        blocks = re.split(r"(?=\d{1,2}:\d{2} [AP]M Setup Starts:)", text)
+        blocks = re.split(r"(?=(?<!\d)\d{1,2}:\d{2} [AP]M Setup Starts:)", text)
 
         for block in blocks:
             if "Setup Starts:" not in block:
