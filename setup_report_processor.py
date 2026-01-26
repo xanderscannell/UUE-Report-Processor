@@ -49,7 +49,9 @@ class SetupReportProcessor:
         "UC Table-Promo1",
         "UC Table-Promo2",
         "UC Lounge (default)",
-        "UC Lounge"
+        "UC Lounge",
+        "Special",
+        "Notice"
     ]
 
     # Location text cleanup patterns
