@@ -61,7 +61,8 @@ class ProcessorWorker(threading.Thread):
 
             try:
                 # Create processor
-                processor = SetupReportProcessor(str(pdf_path))
+                config_path = self.options.get("config_path")
+                processor = SetupReportProcessor(str(pdf_path), config_path=config_path)
 
                 # Process the PDF
                 df = processor.process()
@@ -376,6 +377,9 @@ class SetupReportProcessorGUI:
         if not files:
             return
 
+        # Auto-discover location config file
+        config_path = Path(__file__).parent / "location_config.json"
+
         # Prepare options
         options = {
             "excel_enabled": self.excel_var.get(),
@@ -384,6 +388,7 @@ class SetupReportProcessorGUI:
             "matlab_autolaunch": self.matlab_autolaunch_var.get(),
             "output_dir": Path(self.output_dir_var.get()),
             "verbose": self.verbose_var.get(),
+            "config_path": str(config_path) if config_path.exists() else None,
         }
 
         # Update UI state

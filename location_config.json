@@ -1,0 +1,34 @@
+{
+    "_comment": "Location configuration for Setup Report Processor. Edit this file to add/remove valid locations.",
+    "version": 1,
+    "locations": {
+        "whitelist": [
+            "UC 1225",
+            "UC 1227",
+            "UC 2190",
+            "UC Stage",
+            "UC Kochoff Hall A",
+            "UC Kochoff Hall B",
+            "UC Kochoff Hall C",
+            "RUC 1150 (Victors Den)",
+            "RUC 1171 (Lake Erie)",
+            "RUC 1172 (Lake Huron)",
+            "RUC 1173 (Lake Michigan)",
+            "RUC 1174 (Lake Superior)",
+            "RUC 1175 (Lake Ontario)",
+            "FCS 180",
+            "FCS Dining Rm D",
+            "FCS Michigan East"
+        ],
+        "blacklist": [
+            "UC Table-Bake/Day Sale",
+            "UC Table-Info",
+            "UC Table-Promo1",
+            "UC Table-Promo2",
+            "UC Lounge (default)",
+            "UC Lounge",
+            "Special",
+            "Notice"
+        ]
+    }
+}

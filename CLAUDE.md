@@ -1,6 +1,6 @@
 # UUE-Report-Processor
 
-> [ONE_SENTENCE_DESCRIPTION]
+> A Python application that extracts event schedules from Daily Setup Report PDFs and generates chronologically sorted Excel/CSV outputs, with both CLI and GUI interfaces.
 
 ## Context System
 
@@ -53,9 +53,9 @@ Before the session ends:
 
 ## Current Focus
 
-**Phase**: [CURRENT_PHASE]
-**Working on**: [CURRENT_TASK]
-**Key constraint**: [KEY_CONSTRAINT]
+**Phase**: Maintenance & Bug Fixes
+**Working on**: Fixing PDF parsing edge cases (time extraction, location filtering)
+**Key constraint**: Must not break existing regex-based parsing for working PDF formats
 
 ## Reference
 

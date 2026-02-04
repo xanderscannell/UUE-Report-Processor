@@ -5,6 +5,7 @@ Unit Tests for Setup Report Processor
 Comprehensive test suite for the Daily Setup Report Processor.
 """
 
+import json
 import pytest
 import pandas as pd
 from datetime import datetime
@@ -97,7 +98,7 @@ class TestTimeParser:
 
 
 class TestLocationValidation:
-    """Test location filtering logic."""
+    """Test location whitelist/blacklist matching."""
 
     @pytest.fixture
     def processor(self, tmp_path):
@@ -107,44 +108,59 @@ class TestLocationValidation:
         return SetupReportProcessor(str(pdf_file))
 
     def test_valid_uc_location(self, processor):
-        """Test valid UC location."""
-        assert processor._is_valid_location("UC 1227 Conference") is True
+        """Test valid UC location returns exact whitelist name."""
+        result = processor._match_whitelist_location("UC 1227 Conference Square")
+        assert result == "UC 1227"
 
     def test_valid_ruc_location(self, processor):
-        """Test valid RUC location."""
-        assert processor._is_valid_location("RUC 123 Room") is True
+        """Test valid RUC location returns exact whitelist name."""
+        result = processor._match_whitelist_location("RUC 1172 (Lake Huron) Boardroom")
+        assert result == "RUC 1172 (Lake Huron)"
 
     def test_valid_fcs_michigan(self, processor):
-        """Test valid FCS Michigan location."""
-        assert processor._is_valid_location("FCS Michigan Room") is True
+        """Test valid FCS Michigan East location."""
+        result = processor._match_whitelist_location("FCS Michigan East Empty")
+        assert result == "FCS Michigan East"
 
     def test_valid_fcs_180(self, processor):
         """Test valid FCS 180 location."""
-        assert processor._is_valid_location("FCS 180") is True
+        result = processor._match_whitelist_location("FCS 180 Classroom")
+        assert result == "FCS 180"
 
     def test_valid_fcs_dining(self, processor):
         """Test valid FCS Dining Rm D location."""
-        assert processor._is_valid_location("FCS Dining Rm D") is True
+        result = processor._match_whitelist_location("FCS Dining Rm D Cluster")
+        assert result == "FCS Dining Rm D"
+
+    def test_dirty_location_returns_clean_name(self, processor):
+        """Test that dirty extracted text returns exact whitelist name."""
+        dirty = "UC Kochoff Hall C Crescent Rounds Group has order with Picasso"
+        result = processor._match_whitelist_location(dirty)
+        assert result == "UC Kochoff Hall C"
 
     def test_excluded_location_bake_sale(self, processor):
         """Test excluded location: Bake Sale."""
-        assert processor._is_valid_location("UC Table-Bake/Day Sale") is False
+        assert processor._match_whitelist_location("UC Table-Bake/Day Sale") is None
 
     def test_excluded_location_info(self, processor):
         """Test excluded location: Info table."""
-        assert processor._is_valid_location("UC Table-Info") is False
+        assert processor._match_whitelist_location("UC Table-Info") is None
 
     def test_excluded_location_default(self, processor):
         """Test excluded location with default."""
-        assert processor._is_valid_location("UC Lounge (default)") is False
+        assert processor._match_whitelist_location("UC Lounge (default)") is None
+
+    def test_excluded_location_special(self, processor):
+        """Test excluded location containing Special."""
+        assert processor._match_whitelist_location("UC Special Event Room") is None
 
     def test_invalid_location_prefix(self, processor):
         """Test invalid location prefix."""
-        assert processor._is_valid_location("FH Ice Arena") is False
+        assert processor._match_whitelist_location("FH Ice Arena") is None
 
     def test_invalid_location_no_prefix(self, processor):
         """Test location with no valid prefix."""
-        assert processor._is_valid_location("Random Room") is False
+        assert processor._match_whitelist_location("Random Room") is None
 
 
 class TestEventNameExtraction:
@@ -261,7 +277,7 @@ class TestEventTimesExtraction:
 
 
 class TestLocationExtraction:
-    """Test location extraction and cleaning."""
+    """Test raw location extraction from event blocks."""
 
     @pytest.fixture
     def processor(self, tmp_path):
@@ -270,8 +286,8 @@ class TestLocationExtraction:
         pdf_file.write_text("")
         return SetupReportProcessor(str(pdf_file))
 
-    def test_extract_clean_location(self, processor):
-        """Test extracting clean location."""
+    def test_extract_raw_location(self, processor):
+        """Test extracting raw location text."""
         block = """
         Location Layout Instructions
         UC 1227 Conference
@@ -279,23 +295,14 @@ class TestLocationExtraction:
         result = processor._extract_location(block)
         assert result == "UC 1227 Conference"
 
-    def test_extract_location_with_notes(self, processor):
-        """Test extracting location with extra notes."""
+    def test_extract_raw_location_with_junk(self, processor):
+        """Test that raw extraction returns unclean text (cleanup is done by whitelist matching)."""
         block = """
         Location Layout Instructions
-        UC 1227 Conference See Diagram
+        UC Kochoff Hall C Crescent Rounds Group has order
         """
         result = processor._extract_location(block)
-        assert result == "UC 1227 Conference"
-
-    def test_extract_location_with_setup_info(self, processor):
-        """Test extracting location with setup information."""
-        block = """
-        Location Layout Instructions
-        UC 1225 Cluster Set up in rows
-        """
-        result = processor._extract_location(block)
-        assert result == "UC 1225 Cluster"
+        assert result == "UC Kochoff Hall C Crescent Rounds Group has order"
 
     def test_extract_location_missing(self, processor):
         """Test when location is missing."""
@@ -450,7 +457,7 @@ Some other details
 
         assert result is not None
         assert result["event_name"] == "Book Club January Meeting"
-        assert result["location"] == "UC 1227 Conference"
+        assert result["location"] == "UC 1227"
         assert result["setup_time"] == "7:30 AM"
         assert result["closing_time"] == "10:00 AM"
 
@@ -467,6 +474,70 @@ FH Ice Arena
 
         # Should be None because location doesn't match criteria
         assert result is None
+
+
+class TestConfigLoading:
+    """Test location config file loading."""
+
+    def test_default_config_fallback(self, tmp_path):
+        """Test that processor works with no config file (hardcoded defaults)."""
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_text("")
+        # Pass a nonexistent config path to force fallback
+        processor = SetupReportProcessor(str(pdf_file), config_path=str(tmp_path / "nonexistent.json"))
+        assert len(processor._location_whitelist) > 0
+        assert len(processor._location_blacklist) > 0
+
+    def test_explicit_config_file(self, tmp_path):
+        """Test loading from an explicit config file."""
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_text("")
+
+        config = {
+            "version": 1,
+            "locations": {
+                "whitelist": ["Custom Room A", "Custom Room B"],
+                "blacklist": ["Excluded"]
+            }
+        }
+        config_file = tmp_path / "test_config.json"
+        config_file.write_text(json.dumps(config))
+
+        processor = SetupReportProcessor(str(pdf_file), config_path=str(config_file))
+        # Sorted longest-first (same length items may be in any order)
+        assert set(processor._location_whitelist) == {"Custom Room A", "Custom Room B"}
+        assert len(processor._location_whitelist) == 2
+        assert processor._location_blacklist == ["Excluded"]
+
+    def test_invalid_config_falls_back(self, tmp_path):
+        """Test that invalid JSON falls back to defaults."""
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_text("")
+
+        config_file = tmp_path / "bad_config.json"
+        config_file.write_text("not valid json {{{")
+
+        processor = SetupReportProcessor(str(pdf_file), config_path=str(config_file))
+        assert len(processor._location_whitelist) > 0
+
+    def test_custom_whitelist_matching(self, tmp_path):
+        """Test that custom config whitelist is used for matching."""
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_text("")
+
+        config = {
+            "version": 1,
+            "locations": {
+                "whitelist": ["Test Room 101"],
+                "blacklist": []
+            }
+        }
+        config_file = tmp_path / "test_config.json"
+        config_file.write_text(json.dumps(config))
+
+        processor = SetupReportProcessor(str(pdf_file), config_path=str(config_file))
+        assert processor._match_whitelist_location("Test Room 101 Extra Junk") == "Test Room 101"
+        assert processor._match_whitelist_location("UC 1227") is None
 
 
 if __name__ == "__main__":

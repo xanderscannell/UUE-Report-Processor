@@ -1,24 +1,21 @@
 # Context Loading by Phase
 
-<!-- This file tells Claude (and you) which context files are most relevant
-     for each phase of the project. Saves time by avoiding loading everything. -->
-
-## Phase 1: [PHASE_NAME]
+## Phase 3: Reliability & Maintenance (CURRENT)
 
 **Always read**:
 - `CURRENT_STATUS.md`
 - `CONVENTIONS.md`
 
 **Read if relevant**:
-- `ARCHITECTURE.md` (sections: [relevant sections])
-- `CONTEXT/[relevant_file].md`
+- `ARCHITECTURE.md` (sections: Data Flow, Components > SetupReportProcessor)
+- `DECISIONS.md` (ADRs: ADR-002 for location filtering, ADR-003 for regex patterns)
 
 **Can skip**:
-- [Files not relevant to this phase]
+- `MASTER_PLAN.md` (unless planning new features)
 
 ---
 
-## Phase 2: [PHASE_NAME]
+## Phase 4: Future Enhancements
 
 **Always read**:
 - `CURRENT_STATUS.md`
@@ -26,11 +23,7 @@
 - `ARCHITECTURE.md`
 
 **Read if relevant**:
-- `CONTEXT/[relevant_file].md`
-- `DECISIONS.md` (ADRs: [relevant numbers])
+- `DECISIONS.md` (all ADRs, especially ADR-002 before changing config approach)
+- `MASTER_PLAN.md` (Phase 4 section for planned enhancements)
 
 ---
-
-<!-- Add more phases as your MASTER_PLAN grows.
-     The goal is efficient context loading - Claude doesn't need to read
-     every file every time. Point it to what matters for the current work. -->

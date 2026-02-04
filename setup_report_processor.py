@@ -10,6 +10,7 @@ Version: 1.0.0
 """
 
 import re
+import json
 import logging
 import argparse
 from pathlib import Path
@@ -30,61 +31,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Default location config file path (alongside this script)
+DEFAULT_CONFIG_PATH = Path(__file__).parent / "location_config.json"
+
+# Hardcoded fallback defaults (used when no config file exists)
+DEFAULT_LOCATION_CONFIG = {
+    "whitelist": [
+        "UC 1225", "UC 1227", "UC 2190", "UC Stage",
+        "UC Kochoff Hall A", "UC Kochoff Hall B", "UC Kochoff Hall C",
+        "RUC 1150 (Victors Den)", "RUC 1171 (Lake Erie)",
+        "RUC 1172 (Lake Huron)", "RUC 1173 (Lake Michigan)",
+        "RUC 1174 (Lake Superior)", "RUC 1175 (Lake Ontario)",
+        "FCS 180", "FCS Dining Rm D", "FCS Michigan East",
+    ],
+    "blacklist": [
+        "UC Table-Bake/Day Sale", "UC Table-Info",
+        "UC Table-Promo1", "UC Table-Promo2",
+        "UC Lounge (default)", "UC Lounge",
+        "Special", "Notice",
+    ],
+}
+
 
 class SetupReportProcessor:
     """Process Daily Setup Report PDFs and extract event schedules."""
 
-    # Location filter configurations
-    VALID_LOCATION_PREFIXES = [
-        "UC ",
-        "RUC ",
-        "FCS Michigan",
-        "FCS 180",
-        "FCS Dining Rm D"
-    ]
-
-    EXCLUDED_LOCATIONS = [
-        "UC Table-Bake/Day Sale",
-        "UC Table-Info",
-        "UC Table-Promo1",
-        "UC Table-Promo2",
-        "UC Lounge (default)",
-        "UC Lounge",
-        "Special",
-        "Notice"
-    ]
-
-    # Location text cleanup patterns
-    LOCATION_CLEANUP_PATTERNS = [
-        r"\s+See\s+.*$",           # Remove "See Diagram", "See Set Up Notes", etc.
-        r"\s+No\s+.*$",            # Remove "No food", "No AV needed", etc.
-        r"\s+Set up.*$",           # Remove setup instructions
-        r"\s+OSL\s+.*$",           # Remove OSL-specific text
-        r"\s+Check.*$",            # Remove "Check in with...", etc.
-        r"\s+This is.*$",          # Remove "This is a back-to-back..."
-        r"\s+Event is.*$",         # Remove "Event is not catered"
-        r"\s+no catering.*$",      # Remove "no catering at this event"
-        r"\s+\([^)]*default[^)]*\)",  # Remove "(default)" markers (with or without content after)
-        r"\s+\(default\)",         # Remove plain "(default)" markers
-        r"\s+Banquet Rounds.*$",   # Remove room setup: Banquet Rounds
-        r"\s+Boardroom.*$",        # Remove room setup: Boardroom
-        r"\s+Cluster.*$",          # Remove room setup: Cluster
-        r"\s+Conference\s+Square.*$",  # Remove room setup: Conference Square
-        r"\s+Conference.*$",       # Remove room setup: Conference (general)
-        r"\s+Classroom.*$",        # Remove room setup: Classroom
-        r"\s+Theater\s+Style.*$",  # Remove room setup: Theater Style
-        r"\s+U-Shape.*$",          # Remove room setup: U-Shape
-        r"\s+Hollow\s+Square.*$",  # Remove room setup: Hollow Square
-        r"\s+Reception.*$",        # Remove room setup: Reception
-        r"\s+Empty.*$",            # Remove room setup: Empty
-    ]
-    
-    def __init__(self, pdf_path: str):
+    def __init__(self, pdf_path: str, config_path: Optional[str] = None):
         """
         Initialize the processor.
 
         Args:
             pdf_path: Path to the PDF file to process
+            config_path: Optional path to location config JSON file
 
         Raises:
             FileNotFoundError: If the PDF file does not exist
@@ -97,6 +75,9 @@ class SetupReportProcessor:
         if self.pdf_path.suffix.lower() != ".pdf":
             raise ValueError(f"Expected PDF file, got: {self.pdf_path.suffix}")
 
+        # Load location configuration
+        self._load_location_config(config_path)
+
         # Store intermediate data for MATLAB CSV generation
         self._events = None
 
@@ -108,7 +89,50 @@ class SetupReportProcessor:
             logger.warning("Could not extract report date from PDF, will use PDF filename")
 
         logger.info(f"Initialized processor for: {self.pdf_path}")
-    
+
+    def _load_location_config(self, config_path: Optional[str] = None) -> None:
+        """
+        Load location whitelist and blacklist from JSON config file.
+
+        Resolution order:
+        1. Explicit config_path parameter
+        2. DEFAULT_CONFIG_PATH (location_config.json alongside this script)
+        3. Hardcoded DEFAULT_LOCATION_CONFIG fallback
+
+        Args:
+            config_path: Optional explicit path to config JSON file
+        """
+        resolved_path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
+
+        if resolved_path.exists():
+            try:
+                with open(resolved_path, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+
+                locations = config_data.get("locations", {})
+                whitelist = locations.get("whitelist", DEFAULT_LOCATION_CONFIG["whitelist"])
+                blacklist = locations.get("blacklist", DEFAULT_LOCATION_CONFIG["blacklist"])
+
+                logger.info(f"Loaded location config from: {resolved_path}")
+                logger.info(f"  Whitelist: {len(whitelist)} locations")
+                logger.info(f"  Blacklist: {len(blacklist)} entries")
+
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.warning(f"Error reading config file {resolved_path}: {e}")
+                logger.warning("Falling back to built-in defaults")
+                whitelist = DEFAULT_LOCATION_CONFIG["whitelist"]
+                blacklist = DEFAULT_LOCATION_CONFIG["blacklist"]
+        else:
+            if config_path:
+                logger.warning(f"Config file not found: {resolved_path}")
+            logger.info("Using built-in default location configuration")
+            whitelist = DEFAULT_LOCATION_CONFIG["whitelist"]
+            blacklist = DEFAULT_LOCATION_CONFIG["blacklist"]
+
+        # Sort whitelist longest-first for greedy matching
+        self._location_whitelist = sorted(whitelist, key=len, reverse=True)
+        self._location_blacklist = blacklist
+
     def extract_text_from_pdf(self) -> str:
         """
         Extract all text from the PDF file.
@@ -381,13 +405,13 @@ class SetupReportProcessor:
 
     def _extract_location(self, block: str) -> Optional[str]:
         """
-        Extract and clean location from event block.
+        Extract raw location text from event block.
 
         Args:
             block: Text block containing event data
 
         Returns:
-            Cleaned location string or None if not found/invalid
+            Raw location string or None if not found
         """
         location_match = re.search(r"Location Layout Instructions\s*\n([^\n]+)", block)
         if not location_match:
@@ -395,11 +419,6 @@ class SetupReportProcessor:
 
         location = location_match.group(1).strip()
 
-        # Clean up location using class constants
-        for pattern in self.LOCATION_CLEANUP_PATTERNS:
-            location = re.sub(pattern, "", location, flags=re.IGNORECASE).strip()
-
-        # If location is now empty, return None
         if not location:
             return None
 
@@ -434,15 +453,16 @@ class SetupReportProcessor:
             return None
         event_start, event_end = event_times
 
-        # Extract location
-        location = self._extract_location(block)
-        if not location:
+        # Extract raw location from PDF
+        raw_location = self._extract_location(block)
+        if not raw_location:
             logger.info(f"EXCLUDED: '{event_name}' - no valid location found")
             return None
 
-        # Check if this location should be included
-        if not self._is_valid_location(location):
-            logger.info(f"EXCLUDED: '{event_name}' at '{location}' - location not in whitelist or is blacklisted")
+        # Match against whitelist (returns exact room name or None)
+        location = self._match_whitelist_location(raw_location)
+        if not location:
+            logger.info(f"EXCLUDED: '{event_name}' at '{raw_location}' - location not in whitelist or is blacklisted")
             return None
 
         return {
@@ -452,27 +472,32 @@ class SetupReportProcessor:
             "closing_time": event_end
         }
     
-    def _is_valid_location(self, location: str) -> bool:
+    def _match_whitelist_location(self, raw_location: str) -> Optional[str]:
         """
-        Check if a location matches the filter criteria.
+        Match a raw extracted location against the whitelist and blacklist.
+
+        Checks blacklist first (substring match, case-insensitive).
+        Then checks if the raw location starts with any whitelist entry.
+        Returns the exact whitelist entry as the canonical location name.
 
         Args:
-            location: Location string to check
+            raw_location: Raw location string extracted from PDF
 
         Returns:
-            True if location should be included, False otherwise
+            The matched whitelist location name, or None if no match / blacklisted
         """
-        # Check if location is in excluded list
-        for excluded in self.EXCLUDED_LOCATIONS:
-            if excluded.lower() in location.lower():
-                return False
+        # Check blacklist first (substring matching, case-insensitive)
+        for excluded in self._location_blacklist:
+            if excluded.lower() in raw_location.lower():
+                return None
 
-        # Check if location starts with valid prefix
-        for prefix in self.VALID_LOCATION_PREFIXES:
-            if location.startswith(prefix):
-                return True
+        # Check whitelist (startswith matching)
+        # Whitelist is sorted longest-first, so most specific match wins
+        for location_name in self._location_whitelist:
+            if raw_location.startswith(location_name):
+                return location_name
 
-        return False
+        return None
 
     def create_schedule_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
@@ -874,6 +899,13 @@ Examples:
         help="Enable verbose logging (DEBUG level)"
     )
 
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to location config JSON file (default: location_config.json in project directory)"
+    )
+
     args = parser.parse_args()
 
     # Set logging level
@@ -882,7 +914,7 @@ Examples:
 
     try:
         # Initialize processor
-        processor = SetupReportProcessor(args.pdf_file)
+        processor = SetupReportProcessor(args.pdf_file, config_path=args.config)
 
         # Process the PDF
         df = processor.process()
