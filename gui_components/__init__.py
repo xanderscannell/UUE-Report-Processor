@@ -8,6 +8,7 @@ from .settings import GUI_DEFAULTS, COLORS
 from .log_handler import TextHandler
 from .drop_zone import DragDropZone
 from .file_list import FileListManager
+from .location_editor import LocationEditor
 
 __all__ = [
     "GUI_DEFAULTS",
@@ -15,4 +16,5 @@ __all__ = [
     "TextHandler",
     "DragDropZone",
     "FileListManager",
+    "LocationEditor",
 ]

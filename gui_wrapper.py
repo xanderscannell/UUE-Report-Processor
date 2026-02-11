@@ -23,7 +23,7 @@ import sys
 import subprocess
 
 # Import GUI components
-from gui_components import GUI_DEFAULTS, COLORS, TextHandler, DragDropZone, FileListManager
+from gui_components import GUI_DEFAULTS, COLORS, TextHandler, DragDropZone, FileListManager, LocationEditor
 
 # Import the processor
 from setup_report_processor import SetupReportProcessor
@@ -157,6 +157,18 @@ class SetupReportProcessorGUI:
         # Start queue polling
         self._poll_queue()
 
+    def _open_location_editor(self):
+        """Open the location whitelist editor dialog."""
+        config_path = Path(__file__).parent / "location_config.json"
+        editor = LocationEditor(self.root, config_path)
+        saved = editor.show()
+        if saved:
+            messagebox.showinfo(
+                "Settings Saved",
+                "Location configuration updated.\n\n"
+                "Changes will apply to newly processed files.",
+            )
+
     def _create_widgets(self):
         """Create all UI widgets."""
         # Main container with padding
@@ -211,6 +223,13 @@ class SetupReportProcessorGUI:
         """Create the output options panel."""
         options_frame = ttk.LabelFrame(parent, text="Output Options", padding="10")
         options_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Location whitelist editor button
+        ttk.Button(
+            options_frame,
+            text="Location Whitelist...",
+            command=self._open_location_editor,
+        ).pack(anchor=tk.W, pady=(0, 10))
 
         # Excel/CSV checkboxes
         formats_frame = ttk.Frame(options_frame)

@@ -1,34 +1,102 @@
 {
-    "_comment": "Location configuration for Setup Report Processor. Edit this file to add/remove valid locations.",
-    "version": 1,
-    "locations": {
-        "whitelist": [
-            "UC 1225",
-            "UC 1227",
-            "UC 2190",
-            "UC Stage",
-            "UC Kochoff Hall A",
-            "UC Kochoff Hall B",
-            "UC Kochoff Hall C",
-            "RUC 1150 (Victors Den)",
-            "RUC 1171 (Lake Erie)",
-            "RUC 1172 (Lake Huron)",
-            "RUC 1173 (Lake Michigan)",
-            "RUC 1174 (Lake Superior)",
-            "RUC 1175 (Lake Ontario)",
-            "FCS 180",
-            "FCS Dining Rm D",
-            "FCS Michigan East"
-        ],
-        "blacklist": [
-            "UC Table-Bake/Day Sale",
-            "UC Table-Info",
-            "UC Table-Promo1",
-            "UC Table-Promo2",
-            "UC Lounge (default)",
-            "UC Lounge",
-            "Special",
-            "Notice"
-        ]
-    }
+    "_comment": "Location configuration for Setup Report Processor. Use the GUI editor to manage locations.",
+    "version": 2,
+    "locations": [
+        {
+            "name": "UC 1225",
+            "enabled": true
+        },
+        {
+            "name": "UC 1227",
+            "enabled": true
+        },
+        {
+            "name": "UC 2190",
+            "enabled": true
+        },
+        {
+            "name": "UC Stage",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall A",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall B",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall C",
+            "enabled": true
+        },
+        {
+            "name": "UC Lounge",
+            "enabled": true
+        },
+        {
+            "name": "RUC 1150 (Victors Den)",
+            "enabled": true
+        },
+        {
+            "name": "RUC 1171 (Lake Erie)",
+            "enabled": true
+        },
+        {
+            "name": "RUC 1172 (Lake Huron)",
+            "enabled": true
+        },
+        {
+            "name": "RUC 1173 (Lake Michigan)",
+            "enabled": true
+        },
+        {
+            "name": "RUC 1174 (Lake Superior)",
+            "enabled": true
+        },
+        {
+            "name": "RUC 1175 (Lake Ontario)",
+            "enabled": true
+        },
+        {
+            "name": "FCS 180",
+            "enabled": true
+        },
+        {
+            "name": "FCS Dining Rm D",
+            "enabled": true
+        },
+        {
+            "name": "FCS Michigan East",
+            "enabled": true
+        },
+        {
+            "name": "UC Table-Bake/Day Sale",
+            "enabled": false
+        },
+        {
+            "name": "UC Table-Info",
+            "enabled": false
+        },
+        {
+            "name": "UC Table-Promo1",
+            "enabled": false
+        },
+        {
+            "name": "UC Table-Promo2",
+            "enabled": false
+        },
+        {
+            "name": "Special",
+            "enabled": false
+        },
+        {
+            "name": "Notice",
+            "enabled": false
+        }
+    ]
 }

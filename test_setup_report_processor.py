@@ -98,7 +98,7 @@ class TestTimeParser:
 
 
 class TestLocationValidation:
-    """Test location whitelist/blacklist matching."""
+    """Test location whitelist matching."""
 
     @pytest.fixture
     def processor(self, tmp_path):
@@ -138,20 +138,21 @@ class TestLocationValidation:
         result = processor._match_whitelist_location(dirty)
         assert result == "UC Kochoff Hall C"
 
-    def test_excluded_location_bake_sale(self, processor):
-        """Test excluded location: Bake Sale."""
+    def test_non_whitelisted_table(self, processor):
+        """Test non-whitelisted table location returns None."""
         assert processor._match_whitelist_location("UC Table-Bake/Day Sale") is None
 
-    def test_excluded_location_info(self, processor):
-        """Test excluded location: Info table."""
+    def test_non_whitelisted_info(self, processor):
+        """Test non-whitelisted info table returns None."""
         assert processor._match_whitelist_location("UC Table-Info") is None
 
-    def test_excluded_location_default(self, processor):
-        """Test excluded location with default."""
-        assert processor._match_whitelist_location("UC Lounge (default)") is None
+    def test_lounge_default_matches_lounge(self, processor):
+        """Test UC Lounge (default) matches whitelisted UC Lounge."""
+        result = processor._match_whitelist_location("UC Lounge (default)")
+        assert result == "UC Lounge"
 
-    def test_excluded_location_special(self, processor):
-        """Test excluded location containing Special."""
+    def test_non_whitelisted_special(self, processor):
+        """Test non-whitelisted Special location returns None."""
         assert processor._match_whitelist_location("UC Special Event Room") is None
 
     def test_invalid_location_prefix(self, processor):
@@ -486,17 +487,36 @@ class TestConfigLoading:
         # Pass a nonexistent config path to force fallback
         processor = SetupReportProcessor(str(pdf_file), config_path=str(tmp_path / "nonexistent.json"))
         assert len(processor._location_whitelist) > 0
-        assert len(processor._location_blacklist) > 0
 
-    def test_explicit_config_file(self, tmp_path):
-        """Test loading from an explicit config file."""
+    def test_explicit_v2_config_file(self, tmp_path):
+        """Test loading from an explicit v2 config file."""
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_text("")
+
+        config = {
+            "version": 2,
+            "locations": [
+                {"name": "Custom Room A", "enabled": True},
+                {"name": "Custom Room B", "enabled": True},
+                {"name": "Disabled Room", "enabled": False},
+            ]
+        }
+        config_file = tmp_path / "test_config.json"
+        config_file.write_text(json.dumps(config))
+
+        processor = SetupReportProcessor(str(pdf_file), config_path=str(config_file))
+        assert set(processor._location_whitelist) == {"Custom Room A", "Custom Room B"}
+        assert len(processor._location_whitelist) == 2
+
+    def test_legacy_v1_config_file(self, tmp_path):
+        """Test loading from a legacy v1 config file."""
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_text("")
 
         config = {
             "version": 1,
             "locations": {
-                "whitelist": ["Custom Room A", "Custom Room B"],
+                "whitelist": ["Room Alpha", "Room Beta"],
                 "blacklist": ["Excluded"]
             }
         }
@@ -504,10 +524,7 @@ class TestConfigLoading:
         config_file.write_text(json.dumps(config))
 
         processor = SetupReportProcessor(str(pdf_file), config_path=str(config_file))
-        # Sorted longest-first (same length items may be in any order)
-        assert set(processor._location_whitelist) == {"Custom Room A", "Custom Room B"}
-        assert len(processor._location_whitelist) == 2
-        assert processor._location_blacklist == ["Excluded"]
+        assert set(processor._location_whitelist) == {"Room Alpha", "Room Beta"}
 
     def test_invalid_config_falls_back(self, tmp_path):
         """Test that invalid JSON falls back to defaults."""
@@ -526,11 +543,10 @@ class TestConfigLoading:
         pdf_file.write_text("")
 
         config = {
-            "version": 1,
-            "locations": {
-                "whitelist": ["Test Room 101"],
-                "blacklist": []
-            }
+            "version": 2,
+            "locations": [
+                {"name": "Test Room 101", "enabled": True},
+            ]
         }
         config_file = tmp_path / "test_config.json"
         config_file.write_text(json.dumps(config))

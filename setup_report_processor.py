@@ -35,22 +35,32 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_PATH = Path(__file__).parent / "location_config.json"
 
 # Hardcoded fallback defaults (used when no config file exists)
-DEFAULT_LOCATION_CONFIG = {
-    "whitelist": [
-        "UC 1225", "UC 1227", "UC 2190", "UC Stage",
-        "UC Kochoff Hall A", "UC Kochoff Hall B", "UC Kochoff Hall C",
-        "RUC 1150 (Victors Den)", "RUC 1171 (Lake Erie)",
-        "RUC 1172 (Lake Huron)", "RUC 1173 (Lake Michigan)",
-        "RUC 1174 (Lake Superior)", "RUC 1175 (Lake Ontario)",
-        "FCS 180", "FCS Dining Rm D", "FCS Michigan East",
-    ],
-    "blacklist": [
-        "UC Table-Bake/Day Sale", "UC Table-Info",
-        "UC Table-Promo1", "UC Table-Promo2",
-        "UC Lounge (default)", "UC Lounge",
-        "Special", "Notice",
-    ],
-}
+DEFAULT_LOCATION_CONFIG = [
+    {"name": "UC 1225", "enabled": True},
+    {"name": "UC 1227", "enabled": True},
+    {"name": "UC 2190", "enabled": True},
+    {"name": "UC Stage", "enabled": True},
+    {"name": "UC Kochoff Hall", "enabled": True},
+    {"name": "UC Kochoff Hall A", "enabled": True},
+    {"name": "UC Kochoff Hall B", "enabled": True},
+    {"name": "UC Kochoff Hall C", "enabled": True},
+    {"name": "UC Lounge", "enabled": True},
+    {"name": "RUC 1150 (Victors Den)", "enabled": True},
+    {"name": "RUC 1171 (Lake Erie)", "enabled": True},
+    {"name": "RUC 1172 (Lake Huron)", "enabled": True},
+    {"name": "RUC 1173 (Lake Michigan)", "enabled": True},
+    {"name": "RUC 1174 (Lake Superior)", "enabled": True},
+    {"name": "RUC 1175 (Lake Ontario)", "enabled": True},
+    {"name": "FCS 180", "enabled": True},
+    {"name": "FCS Dining Rm D", "enabled": True},
+    {"name": "FCS Michigan East", "enabled": True},
+    {"name": "UC Table-Bake/Day Sale", "enabled": False},
+    {"name": "UC Table-Info", "enabled": False},
+    {"name": "UC Table-Promo1", "enabled": False},
+    {"name": "UC Table-Promo2", "enabled": False},
+    {"name": "Special", "enabled": False},
+    {"name": "Notice", "enabled": False},
+]
 
 
 class SetupReportProcessor:
@@ -92,7 +102,10 @@ class SetupReportProcessor:
 
     def _load_location_config(self, config_path: Optional[str] = None) -> None:
         """
-        Load location whitelist and blacklist from JSON config file.
+        Load location whitelist from JSON config file.
+
+        Supports both v2 (object array with enabled flags) and v1 (legacy
+        whitelist/blacklist arrays) formats.
 
         Resolution order:
         1. Explicit config_path parameter
@@ -109,29 +122,33 @@ class SetupReportProcessor:
                 with open(resolved_path, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
 
-                locations = config_data.get("locations", {})
-                whitelist = locations.get("whitelist", DEFAULT_LOCATION_CONFIG["whitelist"])
-                blacklist = locations.get("blacklist", DEFAULT_LOCATION_CONFIG["blacklist"])
+                version = config_data.get("version", 1)
 
-                logger.info(f"Loaded location config from: {resolved_path}")
-                logger.info(f"  Whitelist: {len(whitelist)} locations")
-                logger.info(f"  Blacklist: {len(blacklist)} entries")
+                if version >= 2:
+                    # v2 format: list of objects with enabled flag
+                    locations = config_data.get("locations", [])
+                    enabled = [loc["name"] for loc in locations if loc.get("enabled", True)]
+                    logger.info(f"Loaded v2 location config from: {resolved_path}")
+                    logger.info(f"  {len(enabled)} enabled / {len(locations)} total locations")
+                else:
+                    # v1 legacy format: separate whitelist/blacklist arrays
+                    locations_dict = config_data.get("locations", {})
+                    enabled = locations_dict.get("whitelist", [])
+                    logger.info(f"Loaded v1 (legacy) location config from: {resolved_path}")
+                    logger.info(f"  {len(enabled)} whitelist locations")
 
-            except (json.JSONDecodeError, KeyError) as e:
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
                 logger.warning(f"Error reading config file {resolved_path}: {e}")
                 logger.warning("Falling back to built-in defaults")
-                whitelist = DEFAULT_LOCATION_CONFIG["whitelist"]
-                blacklist = DEFAULT_LOCATION_CONFIG["blacklist"]
+                enabled = [loc["name"] for loc in DEFAULT_LOCATION_CONFIG if loc.get("enabled", True)]
         else:
             if config_path:
                 logger.warning(f"Config file not found: {resolved_path}")
             logger.info("Using built-in default location configuration")
-            whitelist = DEFAULT_LOCATION_CONFIG["whitelist"]
-            blacklist = DEFAULT_LOCATION_CONFIG["blacklist"]
+            enabled = [loc["name"] for loc in DEFAULT_LOCATION_CONFIG if loc.get("enabled", True)]
 
         # Sort whitelist longest-first for greedy matching
-        self._location_whitelist = sorted(whitelist, key=len, reverse=True)
-        self._location_blacklist = blacklist
+        self._location_whitelist = sorted(enabled, key=len, reverse=True)
 
     def extract_text_from_pdf(self) -> str:
         """
@@ -462,7 +479,7 @@ class SetupReportProcessor:
         # Match against whitelist (returns exact room name or None)
         location = self._match_whitelist_location(raw_location)
         if not location:
-            logger.info(f"EXCLUDED: '{event_name}' at '{raw_location}' - location not in whitelist or is blacklisted")
+            logger.info(f"EXCLUDED: '{event_name}' at '{raw_location}' - location not in whitelist")
             return None
 
         return {
@@ -474,23 +491,17 @@ class SetupReportProcessor:
     
     def _match_whitelist_location(self, raw_location: str) -> Optional[str]:
         """
-        Match a raw extracted location against the whitelist and blacklist.
+        Match a raw extracted location against the enabled whitelist.
 
-        Checks blacklist first (substring match, case-insensitive).
-        Then checks if the raw location starts with any whitelist entry.
+        Checks if the raw location starts with any whitelist entry.
         Returns the exact whitelist entry as the canonical location name.
 
         Args:
             raw_location: Raw location string extracted from PDF
 
         Returns:
-            The matched whitelist location name, or None if no match / blacklisted
+            The matched whitelist location name, or None if no match
         """
-        # Check blacklist first (substring matching, case-insensitive)
-        for excluded in self._location_blacklist:
-            if excluded.lower() in raw_location.lower():
-                return None
-
         # Check whitelist (startswith matching)
         # Whitelist is sorted longest-first, so most specific match wins
         for location_name in self._location_whitelist:
