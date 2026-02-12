@@ -14,7 +14,8 @@
       "Bash(pytest:*)",
       "Bash(find:*)",
       "Bash(venv/Scripts/python -m pytest test_setup_report_processor.py -v)",
-      "Bash(venv/Scripts/python -m pytest:*)"
+      "Bash(venv/Scripts/python -m pytest:*)",
+      "Bash(venv/Scripts/python:*)"
     ]
   }
 }

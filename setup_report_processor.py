@@ -10,6 +10,7 @@ Version: 1.0.0
 """
 
 import re
+import sys
 import json
 import logging
 import argparse
@@ -18,6 +19,12 @@ from datetime import datetime
 from typing import List, Dict, Optional
 import pandas as pd
 import pdfplumber
+
+# Resolve base directory (works for both script and frozen .exe)
+if getattr(sys, 'frozen', False):
+    BASE_DIR = Path(sys.executable).parent
+else:
+    BASE_DIR = Path(__file__).parent
 
 
 # Configure logging
@@ -31,8 +38,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Default location config file path (alongside this script)
-DEFAULT_CONFIG_PATH = Path(__file__).parent / "location_config.json"
+# Default location config file path (alongside the script or .exe)
+DEFAULT_CONFIG_PATH = BASE_DIR / "location_config.json"
 
 # Hardcoded fallback defaults (used when no config file exists)
 DEFAULT_LOCATION_CONFIG = [

@@ -42,6 +42,9 @@ ENV/
 # Test PDFs (optional - comment out if you want to track test files)
 *.pdf
 
+# PyInstaller
+*.spec
+
 # OS
 .DS_Store
 Thumbs.db

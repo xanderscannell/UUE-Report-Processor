@@ -1,54 +1,71 @@
 # Project Status
 
-**Last updated**: 2026-02-04
+**Last updated**: 2026-02-11
 
 ## Current Position
 
-**Phase**: Maintenance & Bug Fixes
-**Subphase**: PDF parsing edge cases
-**Progress**: Core features 100% complete, ongoing bug fixes
+**Phase**: Release Preparation
+**Subphase**: First portable release
+**Progress**: Core features 100%, GUI complete, portable exe builds working
 
 ## Recently Completed
 
-- Fixed 11:XX AM times being parsed as 1:XX AM (regex lookahead split bug in `extract_events`)
-- Added "Special Notice" to location blacklist
-- Added CDS prevention context framework
-- Fixed "no setup time defined" event handling
-- Added special notice to the blacklist
+- **Location config v2 format**: Migrated from separate whitelist/blacklist arrays to single object array with `enabled` flags (`location_config.json`)
+- **Removed blacklist concept**: Disabled whitelist items replace the old blacklist; simplified `_match_whitelist_location()` in processor
+- **Location Editor GUI**: New `gui_components/location_editor.py` — modal dialog for add/remove/toggle locations, saves v2 JSON
+- **Desktop shortcut button**: PowerShell-based `.lnk` creation with OneDrive Desktop path detection
+- **Custom app icon**: `UUE.ico` — embedded in exe via PyInstaller `--icon`, used for window titlebar and desktop shortcut
+- **Frozen exe support**: `BASE_DIR` using `sys.frozen` detection in both `setup_report_processor.py` and `gui_wrapper.py`
+- **PyInstaller `--onedir` build**: Switched from `--onefile` (slow startup) to `--onedir` (instant startup)
+- **Fixed all 49 tests**: Including 2 pre-existing setup time extraction test failures (leading whitespace vs `^` anchor)
+- **GUI layout fixes**: Action buttons visible and properly ordered above Process Files button
+- **v1 backward compatibility**: Processor can still load legacy v1 config files
 
 ## In Progress
 
-- [ ] Context framework initialization (this session)
+- [ ] Update README for first release
+- [ ] Final exe rebuild with all latest changes
 
 ## Next Up
 
-1. Verify fix works across all existing input PDFs
-2. Address any additional PDF parsing edge cases as they arise
-3. Consider adding config file support for location filters
+1. Rebuild exe with `pyinstaller --windowed --name SetupReportProcessor --icon=UUE.ico gui_wrapper.py`
+2. Copy `location_config.json` into `dist/SetupReportProcessor/`
+3. Zip `SetupReportProcessor/` folder for distribution
+4. Update README with usage instructions and release notes
 
 ## Active Files and Modules
 
 ```
-setup_report_processor.py    [status: stable, active bug fixes]
-gui_wrapper.py               [status: stable]
-gui_components/              [status: stable]
-test_setup_report_processor.py [status: stable, may need new test cases]
+setup_report_processor.py    [status: stable, v2 config, no blacklist]
+gui_wrapper.py               [status: stable, icon support, desktop shortcut, layout fixed]
+gui_components/              [status: stable, includes LocationEditor]
+location_config.json         [status: stable, v2 format]
+test_setup_report_processor.py [status: stable, 49/49 passing]
+UUE.ico                      [status: new, app icon]
+.gitignore                   [status: updated, *.spec excluded]
 ```
 
 ## Recent Decisions
 
-- **2026-02-04**: Added negative lookbehind `(?<!\d)` to block-splitting regex to prevent 11:XX time truncation (see DECISIONS.md #ADR-003)
-- **2026-02-04**: Added "Special" and "Notice" as separate blacklist entries for case-insensitive substring matching
+- **2026-02-11**: Switched to `--onedir` PyInstaller build to avoid slow `--onefile` startup extraction
+- **2026-02-11**: Desktop shortcut uses exe's embedded icon (`$s.IconLocation = "$target,0"`) instead of requiring separate .ico in deliverable
+- **2026-02-11**: Window icon uses `self.root.iconbitmap(sys.executable)` when frozen to read embedded icon
+- **2026-02-11**: Location config v2 format — `[{"name": "...", "enabled": true/false}]` replaces separate whitelist/blacklist
+- **2026-02-11**: OneDrive Desktop path resolved via `[Environment]::GetFolderPath('Desktop')` PowerShell call
 
-## Open Questions
+## Build Instructions
 
-- **Q**: Should location filters be moved to an external config file (YAML/JSON)?
-  - Leaning toward: Yes, for easier customization without code changes
-  - Blocked by: Not a priority yet
+```bash
+# From project root with venv activated:
+pyinstaller --windowed --name SetupReportProcessor --icon=UUE.ico gui_wrapper.py
+cp location_config.json dist/SetupReportProcessor/
+# Zip dist/SetupReportProcessor/ for distribution
+```
 
 ## Notes for Claude
 
-- The PDF format has times appearing TWICE per line: `11:30 AM Setup Starts: 11:00 AM Event Name...` — the first time is "Setup Ready By", the second is the actual "Setup Starts" time
-- pdfplumber text extraction can produce unexpected layouts; always test regex changes against real PDFs in `input/`
-- The `_is_valid_location()` method uses case-insensitive substring matching for blacklist and prefix matching for whitelist
-- Output files go to both `./output/` (via GUI) and `./` (via CLI) depending on entry point
+- The PDF format has times appearing TWICE per line: `11:30 AM Setup Starts: 11:00 AM Event Name...`
+- pdfplumber text extraction can produce unexpected layouts; always test regex changes against real PDFs
+- `_match_whitelist_location()` uses longest-first `startswith` matching (no more blacklist check)
+- Deliverable = `SetupReportProcessor.exe` + `location_config.json` + `_internal/` folder, all inside one zipped folder
+- `BASE_DIR` = `Path(sys.executable).parent` when frozen, `Path(__file__).parent` otherwise

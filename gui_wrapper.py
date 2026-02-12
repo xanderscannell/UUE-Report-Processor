@@ -22,6 +22,12 @@ import os
 import sys
 import subprocess
 
+# Resolve base directory (works for both script and frozen .exe)
+if getattr(sys, 'frozen', False):
+    BASE_DIR = Path(sys.executable).parent
+else:
+    BASE_DIR = Path(__file__).parent
+
 # Import GUI components
 from gui_components import GUI_DEFAULTS, COLORS, TextHandler, DragDropZone, FileListManager, LocationEditor
 
@@ -145,6 +151,14 @@ class SetupReportProcessorGUI:
         self.root.geometry(GUI_DEFAULTS["window_size"])
         self.root.resizable(True, True)
 
+        # Set window icon
+        if getattr(sys, 'frozen', False):
+            self.root.iconbitmap(sys.executable)
+        else:
+            icon_path = BASE_DIR / "UUE.ico"
+            if icon_path.exists():
+                self.root.iconbitmap(str(icon_path))
+
         # Processing state
         self.worker = None
         self.update_queue = queue.Queue()
@@ -159,7 +173,7 @@ class SetupReportProcessorGUI:
 
     def _open_location_editor(self):
         """Open the location whitelist editor dialog."""
-        config_path = Path(__file__).parent / "location_config.json"
+        config_path = BASE_DIR / "location_config.json"
         editor = LocationEditor(self.root, config_path)
         saved = editor.show()
         if saved:
@@ -185,6 +199,9 @@ class SetupReportProcessorGUI:
 
         # Output options frame
         self._create_output_options(main_frame)
+
+        # Action buttons (single row above Process button)
+        self._create_action_buttons(main_frame)
 
         # Process button
         self.process_button = ttk.Button(
@@ -213,11 +230,8 @@ class SetupReportProcessorGUI:
         self.progress_label = ttk.Label(progress_frame, text="Ready")
         self.progress_label.pack(anchor=tk.W)
 
-        # Status log
+        # Status log (expands to fill remaining space)
         self._create_status_log(main_frame)
-
-        # Action buttons
-        self._create_action_buttons(main_frame)
 
     def _create_output_options(self, parent):
         """Create the output options panel."""
@@ -308,25 +322,31 @@ class SetupReportProcessorGUI:
 
     def _create_action_buttons(self, parent):
         """Create the action buttons row."""
-        buttons_frame = ttk.Frame(parent)
-        buttons_frame.pack(fill=tk.X)
+        row = ttk.Frame(parent)
+        row.pack(fill=tk.X, pady=(0, 5))
 
         ttk.Button(
-            buttons_frame,
+            row,
             text="📂 Open Output Folder",
             command=self._open_output_folder,
         ).pack(side=tk.LEFT, padx=5)
 
         ttk.Button(
-            buttons_frame,
+            row,
             text="Clear Status",
             command=self._clear_status,
         ).pack(side=tk.LEFT, padx=5)
 
         ttk.Button(
-            buttons_frame,
+            row,
             text="View Log File",
             command=self._view_log_file,
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(
+            row,
+            text="Add Desktop Shortcut",
+            command=self._create_desktop_shortcut,
         ).pack(side=tk.LEFT, padx=5)
 
     def _setup_logging(self):
@@ -397,7 +417,7 @@ class SetupReportProcessorGUI:
             return
 
         # Auto-discover location config file
-        config_path = Path(__file__).parent / "location_config.json"
+        config_path = BASE_DIR / "location_config.json"
 
         # Prepare options
         options = {
@@ -522,6 +542,79 @@ class SetupReportProcessorGUI:
             subprocess.run(["open", str(log_file)])
         else:
             subprocess.run(["xdg-open", str(log_file)])
+
+    def _create_desktop_shortcut(self):
+        """Create a desktop shortcut to this application."""
+        desktop = Path(os.path.join(os.environ.get("USERPROFILE", str(Path.home())),
+                       "Desktop"))
+        # Use shell to get actual Desktop path (handles OneDrive redirection)
+        try:
+            result = subprocess.run(
+                ["powershell", "-Command",
+                 "[Environment]::GetFolderPath('Desktop')"],
+                capture_output=True, text=True,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                desktop = Path(result.stdout.strip())
+        except Exception:
+            pass
+        shortcut = desktop / "Setup Report Processor.lnk"
+
+        if shortcut.exists():
+            messagebox.showinfo(
+                "Shortcut Exists",
+                "A desktop shortcut already exists.",
+            )
+            return
+
+        # Determine what the shortcut should point to
+        if getattr(sys, 'frozen', False):
+            target = Path(sys.executable)
+            args_line = ""
+        else:
+            target = Path(sys.executable)  # pythonw.exe / python.exe
+            script = Path(__file__).resolve()
+            args_line = f'$s.Arguments = "{script}"; '
+
+        # Use the exe itself as icon source (embedded via --icon), fall back to .ico file
+        icon_path = BASE_DIR / "UUE.ico"
+        if getattr(sys, 'frozen', False):
+            icon_line = f'$s.IconLocation = "{target},0"; '
+        elif icon_path.exists():
+            icon_line = f'$s.IconLocation = "{icon_path}"; '
+        else:
+            icon_line = ""
+        ps_script = (
+            '$s = (New-Object -ComObject WScript.Shell)'
+            f'.CreateShortcut("{shortcut}"); '
+            f'$s.TargetPath = "{target}"; '
+            f'{args_line}'
+            f'$s.WorkingDirectory = "{BASE_DIR}"; '
+            f'{icon_line}'
+            '$s.Save()'
+        )
+
+        try:
+            result = subprocess.run(
+                ["powershell", "-Command", ps_script],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                messagebox.showinfo(
+                    "Shortcut Created",
+                    "Desktop shortcut has been created.",
+                )
+            else:
+                messagebox.showerror(
+                    "Shortcut Failed",
+                    f"Could not create shortcut:\n{result.stderr}",
+                )
+        except Exception as e:
+            messagebox.showerror(
+                "Shortcut Failed",
+                f"Error creating shortcut:\n{e}",
+            )
 
     def run(self):
         """Start the GUI application."""

@@ -219,17 +219,13 @@ class TestSetupTimeExtraction:
 
     def test_extract_setup_time_standard(self, processor):
         """Test extracting standard setup time."""
-        block = """
-        7:30 AM Setup Starts: Event Details
-        """
+        block = "7:30 AM Setup Starts: Event Details"
         result = processor._extract_setup_time(block)
         assert result == "7:30 AM"
 
     def test_extract_setup_time_pm(self, processor):
         """Test extracting PM setup time."""
-        block = """
-        2:15 PM Setup Starts: Event Details
-        """
+        block = "2:15 PM Setup Starts: Event Details"
         result = processor._extract_setup_time(block)
         assert result == "2:15 PM"
 

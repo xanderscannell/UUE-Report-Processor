@@ -1,39 +1,63 @@
 # Daily Setup Report Processor
 
-A production-ready Python script for extracting event schedules from Daily Setup Report PDFs and generating chronologically sorted Excel/CSV schedules.
+A Python application that extracts event schedules from Daily Setup Report PDFs and generates chronologically sorted Excel/CSV outputs, with both CLI and GUI interfaces.
 
 ## Features
 
-✨ **Automated PDF Processing**: Extracts event data from complex PDF reports  
-📊 **Excel & CSV Output**: Generates professional schedule files  
-🔍 **Smart Filtering**: Filters events by location with configurable rules  
-⏰ **Chronological Sorting**: Automatically orders events by time  
-📝 **Detailed Logging**: Complete audit trail of processing steps  
-🛡️ **Error Handling**: Robust error handling with helpful messages  
+- **Automated PDF Processing**: Extracts event data from Daily Setup Report PDFs
+- **Excel & CSV Output**: Generates professional schedule files
+- **Smart Location Filtering**: Configurable whitelist of venue locations
+- **Chronological Sorting**: Automatically orders events by setup time
+- **GUI Interface**: Drag-and-drop desktop app with batch processing
+- **Location Editor**: Built-in GUI for managing the location whitelist
+- **Desktop Shortcut**: One-click shortcut creation from the app
+- **Portable Distribution**: Runs as a standalone `.exe` with no Python required
+- **Detailed Logging**: Complete audit trail of processing steps
 
-## Quick Start
+## Portable App (Recommended — Windows Only)
 
-### 1. Installation
+Download the latest `SetupReportProcessor.zip`, extract it, and double-click `SetupReportProcessor.exe`. No installation required.
 
-```bash
-# Create a virtual environment (recommended)
-python -m venv venv
-
-# Activate virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
+The folder contains:
+```
+SetupReportProcessor/
+  SetupReportProcessor.exe    # Main application
+  location_config.json        # Location whitelist (editable via GUI)
+  _internal/                  # Application dependencies
 ```
 
-### 2. Basic Usage
+### First Launch
+
+1. Extract the zip to any folder
+2. Double-click `SetupReportProcessor.exe`
+3. (Optional) Click **Add Desktop Shortcut** for quick access
+
+## GUI Usage
+
+The GUI provides drag-and-drop PDF processing:
+
+1. **Add Files**: Drag PDF files onto the drop zone, or click to browse
+2. **Select Output**: Choose Excel, CSV, or both
+3. **Process**: Click **Process Files** to generate schedules
+4. **View Output**: Click **Open Output Folder** to see results
+
+### Location Whitelist
+
+Click **Location Whitelist...** to manage which venue locations are included in the output:
+
+- **Add**: Create new location entries with custom names
+- **Toggle**: Enable/disable locations without removing them
+- **Remove**: Delete locations you no longer need
+
+Disabled locations are filtered out during processing. Changes are saved to `location_config.json`.
+
+## CLI Usage (Cross-Platform)
+
+For automation, scripting, or non-Windows systems, use the command-line interface with Python:
 
 ```bash
 # Process a PDF (generates Excel by default)
-python setup_report_processor.py DailySetupReport__19_.pdf
+python setup_report_processor.py report.pdf
 
 # Specify custom output name
 python setup_report_processor.py report.pdf -o my_schedule.xlsx
@@ -41,47 +65,17 @@ python setup_report_processor.py report.pdf -o my_schedule.xlsx
 # Generate both Excel and CSV
 python setup_report_processor.py report.pdf --csv
 
+# CSV only
+python setup_report_processor.py report.pdf --csv --no-excel
+
 # Verbose output (for debugging)
 python setup_report_processor.py report.pdf --verbose
 ```
 
-## How It Works
-
-The script performs the following steps:
-
-1. **Extract Text**: Reads all text from the PDF using pdfplumber
-2. **Parse Events**: Identifies event blocks and extracts:
-   - Event name
-   - Location
-   - Setup Ready By time
-   - Closing time (event end time)
-3. **Filter by Location**: Keeps only events at these locations:
-   - UC (University Center)
-   - RUC (Renovated University Center)
-   - FCS Michigan Room
-   - FCS 180
-   - FCS Dining Rm D
-4. **Create Schedule**: Generates two rows per event:
-   - One for "Setup Ready By" time
-   - One for "Closing" time
-5. **Sort Chronologically**: Orders all entries by time
-6. **Export**: Saves to Excel and/or CSV
-
-## Output Format
-
-The generated schedule has 4 columns:
-
-| Event Name | Location | Activity | Time |
-|------------|----------|----------|------|
-| Book Club January Meeting | UC 1227 Conference | Setup Ready By | 11:30 AM |
-| Book Club January Meeting | UC 1227 Conference | Closing | 2:00 PM |
-| Ratio Christi Event 1 | UC 1225 Cluster | Setup Ready By | 2:15 PM |
-| ... | ... | ... | ... |
-
-## Command-Line Options
+### Command-Line Options
 
 ```
-usage: setup_report_processor.py [-h] [-o OUTPUT] [--excel] [--csv] 
+usage: setup_report_processor.py [-h] [-o OUTPUT] [--excel] [--csv]
                                   [--no-excel] [-v] pdf_file
 
 positional arguments:
@@ -97,190 +91,134 @@ optional arguments:
   -v, --verbose         Enable verbose logging (DEBUG level)
 ```
 
-## Examples
+## How It Works
 
-### Example 1: Basic Processing
+1. **Extract Text**: Reads all text from the PDF using pdfplumber
+2. **Parse Events**: Identifies event blocks and extracts event name, location, setup time, and closing time
+3. **Filter by Location**: Keeps only events at locations enabled in the whitelist
+4. **Create Schedule**: Generates two rows per event (Setup Ready By + Closing)
+5. **Sort Chronologically**: Orders all entries by time
+6. **Export**: Saves to Excel and/or CSV
+
+## Output Format
+
+| Event Name | Location | Activity | Time |
+|------------|----------|----------|------|
+| Book Club January Meeting | UC 1227 | Setup Ready By | 11:30 AM |
+| Book Club January Meeting | UC 1227 | Closing | 2:00 PM |
+| Ratio Christi Event 1 | UC 1225 | Setup Ready By | 2:15 PM |
+
+## Location Configuration
+
+Locations are managed via `location_config.json` (or through the GUI editor):
+
+```json
+{
+  "version": 2,
+  "locations": [
+    {"name": "UC 1225", "enabled": true},
+    {"name": "UC Table-Info", "enabled": false}
+  ]
+}
+```
+
+- `enabled: true` — location is included in processing
+- `enabled: false` — location is excluded (filtered out)
+
+## Development Setup
+
 ```bash
-python setup_report_processor.py DailySetupReport__19_.pdf
-```
-Output: `DailySetupReport__19__schedule.xlsx`
+# Clone the repository
+git clone <repo-url>
+cd UUE
 
-### Example 2: Custom Output Name
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate        # Windows
+source venv/bin/activate     # macOS/Linux
+
+# Install dependencies
+pip install -r requirements.txt
+pip install -r requirements-gui.txt  # Optional: enhanced drag-and-drop
+
+# Run tests
+python -m pytest test_setup_report_processor.py -v
+
+# Run the GUI
+python gui_wrapper.py
+```
+
+### Building the Portable Exe
+
 ```bash
-python setup_report_processor.py report.pdf -o weekly_schedule.xlsx
-```
-Output: `weekly_schedule.xlsx`
-
-### Example 3: Generate Both Formats
-```bash
-python setup_report_processor.py report.pdf --csv
-```
-Output: 
-- `report_schedule.xlsx`
-- `report_schedule.csv`
-
-### Example 4: CSV Only
-```bash
-python setup_report_processor.py report.pdf --csv --no-excel
-```
-Output: `report_schedule.csv`
-
-### Example 5: Verbose Mode (Debugging)
-```bash
-python setup_report_processor.py report.pdf --verbose
-```
-Shows detailed processing information and saves detailed logs.
-
-## Logging
-
-The script creates a log file `setup_report_processor.log` containing:
-- Timestamp of each operation
-- Number of events found
-- Warnings about skipped events
-- Error messages (if any)
-
-Example log output:
-```
-2026-01-07 14:30:15 - INFO - Initialized processor for: DailySetupReport__19_.pdf
-2026-01-07 14:30:15 - INFO - Extracting text from PDF...
-2026-01-07 14:30:16 - INFO - Successfully extracted 12450 characters from PDF
-2026-01-07 14:30:16 - INFO - Parsing events from text...
-2026-01-07 14:30:16 - INFO - Found 15 total events in PDF
-2026-01-07 14:30:16 - DEBUG - Skipping event 'M. Hockey Practice' - location 'FH Ice Arena' does not match criteria
-...
+pip install pyinstaller
+pyinstaller --windowed --name SetupReportProcessor --icon=UUE.ico gui_wrapper.py
+cp location_config.json dist/SetupReportProcessor/
 ```
 
-## Customizing Location Filters
-
-To modify which locations are included/excluded, edit the script's class variables:
-
-```python
-class SetupReportProcessor:
-    # Add or remove location prefixes
-    VALID_LOCATION_PREFIXES = [
-        "UC ",
-        "RUC ",
-        "FCS Michigan",
-        "FCS 180",
-        "FCS Dining Rm D"
-    ]
-    
-    # Add or remove excluded locations
-    EXCLUDED_LOCATIONS = [
-        "UC Table-Bake/Day Sale",
-        "UC Table-Info",
-    ]
-```
-
-## Troubleshooting
-
-### Issue: "PDF file not found"
-**Solution**: Check that the PDF path is correct and the file exists.
-
-### Issue: "No valid events found"
-**Possible causes**:
-- PDF format has changed
-- All events are filtered out by location rules
-- PDF is empty or corrupted
-
-**Solution**: Run with `--verbose` flag to see detailed processing logs.
-
-### Issue: Excel file won't open
-**Possible causes**:
-- File is still being written
-- Insufficient disk space
-- File already open in Excel
-
-**Solution**: Close Excel, ensure disk space, and try again.
-
-### Issue: Missing events in output
-**Possible causes**:
-- Events don't match location filters
-- Event format is non-standard
-
-**Solution**: Check log file for "Skipping event" messages. The log shows why events were excluded.
-
-## Requirements
-
-- Python 3.7 or higher
-- Operating System: Windows, macOS, or Linux
-- ~50MB disk space for dependencies
-
-## Dependencies
-
-- **pdfplumber**: PDF text extraction
-- **pandas**: Data manipulation
-- **openpyxl**: Excel file generation
-
-See `requirements.txt` for specific versions.
+Then zip the `dist/SetupReportProcessor/` folder for distribution.
 
 ## File Structure
 
 ```
 .
-├── setup_report_processor.py    # Main script
-├── requirements.txt              # Python dependencies
-├── README.md                     # This file
-└── setup_report_processor.log   # Generated log file
+├── setup_report_processor.py     # Core processor (CLI + library)
+├── gui_wrapper.py                # GUI application
+├── gui_components/               # GUI component modules
+│   ├── settings.py               #   GUI defaults and colors
+│   ├── drop_zone.py              #   Drag-and-drop zone
+│   ├── file_list.py              #   File list manager
+│   ├── log_handler.py            #   Log text handler
+│   └── location_editor.py        #   Location whitelist editor
+├── location_config.json          # Location whitelist configuration
+├── UUE.ico                       # Application icon
+├── test_setup_report_processor.py # Test suite (49 tests)
+├── requirements.txt              # Core dependencies
+├── requirements-gui.txt          # GUI-specific dependencies
+└── README.md                     # This file
 ```
 
-## Advanced Usage
+## Dependencies
 
-### Batch Processing Multiple PDFs
+**Core**:
+- pdfplumber (PDF text extraction)
+- pandas (data manipulation)
+- openpyxl (Excel file generation)
 
-Create a simple bash script (Linux/Mac) or batch file (Windows):
+**GUI** (optional):
+- tkinterdnd2 (enhanced drag-and-drop)
 
-**Linux/Mac** (`process_all.sh`):
-```bash
-#!/bin/bash
-for pdf in *.pdf; do
-    echo "Processing $pdf..."
-    python setup_report_processor.py "$pdf"
-done
-```
+**Build** (optional):
+- PyInstaller (portable exe generation)
 
-**Windows** (`process_all.bat`):
-```batch
-@echo off
-for %%f in (*.pdf) do (
-    echo Processing %%f...
-    python setup_report_processor.py "%%f"
-)
-```
+## Troubleshooting
 
-### Integration with Other Scripts
+### No valid events found
+- Run with `--verbose` to see which events are being filtered and why
+- Check the location whitelist — locations may be disabled
+- The PDF format may have changed
 
-```python
-from setup_report_processor import SetupReportProcessor
+### Missing events in output
+- Check the log file for "Skipping event" or "not in whitelist" messages
+- Open the Location Whitelist editor and verify the location is enabled
 
-# Process PDF
-processor = SetupReportProcessor('report.pdf')
-df = processor.process()
+### Desktop shortcut opens wrong application
+- Delete the old shortcut and recreate it from the GUI
+- When running from Python (not the exe), the shortcut points to your Python interpreter
 
-# Now you can manipulate the DataFrame
-print(df.head())
-df.to_json('output.json', orient='records')
-```
-
-## Performance
-
-- **Small PDFs** (1-10 pages): < 1 second
-- **Medium PDFs** (10-50 pages): 1-5 seconds
-- **Large PDFs** (50+ pages): 5-15 seconds
-
-## License
-
-This script is provided as-is for internal use.
-
-## Support
-
-For issues or questions:
-1. Check the log file: `setup_report_processor.log`
-2. Run with `--verbose` flag for detailed output
-3. Review this README for common solutions
+### Exe takes long to start
+- Use the `--onedir` build (default) instead of `--onefile`
+- `--onefile` extracts all dependencies on every launch, which is slow
 
 ## Version History
 
+- **v2.0.0** (2026-02-11): GUI Release
+  - Desktop GUI with drag-and-drop file processing
+  - Location whitelist editor (add/remove/toggle locations)
+  - Portable `.exe` distribution via PyInstaller
+  - Desktop shortcut creation with custom icon
+  - Location config v2 format (replaces separate whitelist/blacklist)
+  - 49 passing tests
 - **v1.0.0** (2026-01-07): Initial production release
   - PDF text extraction
   - Location-based filtering
@@ -288,6 +226,6 @@ For issues or questions:
   - Excel/CSV export
   - Comprehensive logging
 
----
+## License
 
-**Happy Scheduling! 📅**
+This script is provided as-is for internal use.
