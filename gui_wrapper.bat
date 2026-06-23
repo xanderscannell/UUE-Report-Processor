@@ -30,17 +30,9 @@ if not exist "venv\Scripts\activate.bat" (
     echo Installing dependencies...
     pip install -r requirements.txt
     if errorlevel 1 (
-        echo ERROR: Failed to install core dependencies.
+        echo ERROR: Failed to install dependencies.
         pause
         exit /b 1
-    )
-
-    REM Try to install GUI dependencies (optional)
-    pip install -r requirements-gui.txt
-    if errorlevel 1 (
-        echo Warning: tkinterdnd2 installation failed.
-        echo Drag-and-drop will use fallback mode ^(click to browse^).
-        echo.
     )
 
     echo.

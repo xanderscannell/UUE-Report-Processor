@@ -86,3 +86,52 @@ Add a negative lookbehind `(?<!\d)` to the split pattern: `(?=(?<!\d)\d{1,2}:\d{
 **Relevant code**: `setup_report_processor.py:280`
 
 ---
+
+## ADR-004: Migrate GUI to PySide6 and replace MATLAB Gantt with embedded pyqtgraph
+
+**Date**: 2026-06-23
+**Status**: Accepted
+
+**Context**:
+The Gantt chart display was an external MATLAB App (`GanttChartApp.mlapp`), launched via `matlab -r`
+with the CSV passed through the `GANTT_CSV_PATH` environment variable. This required every user to
+install and license MATLAB separately — a heavy external dependency that defeats the point of the
+portable-exe distribution. Separately, the tkinter GUI renders blurry on high-DPI / scaled Windows
+displays because tkinter registers as DPI-unaware and the OS bitmap-stretches the window.
+
+**Decision**:
+- Rewrite the GUI layer from tkinter to **PySide6** (Qt for Python, LGPL).
+- Replace the external MATLAB app with an **embedded pyqtgraph Gantt chart**, opened in a separate
+  window via a "View Gantt" button.
+- Remove the MATLAB CSV output and launch code entirely. Keep the row-shaping helper
+  (Location, StartTime 24h, EndTime 24h) renamed to `create_gantt_rows()` as the chart's data source.
+- In-place replacement (no parallel tkinter build retained).
+
+**Rationale**:
+- **PySide6**: true per-monitor high-DPI with vector text — fixes the blur at the framework level.
+  LGPL allows shipping in the closed-source portable exe. Native DnD removes the `tkinterdnd2` dependency.
+- **pyqtgraph**: fast, DPI-crisp, ideal for redrawing the live current-time line every 60s (QTimer),
+  a direct port of the MATLAB timer behavior.
+- The core engine (`setup_report_processor.py`) is pure logic and is untouched except for removing the
+  MATLAB output path — keeps the migration bounded to the UI layer.
+
+**Consequences**:
+- (+) No external MATLAB dependency; chart lives inside the app
+- (+) Crisp rendering on scaled displays
+- (+) Drops `tkinterdnd2`; adds `PySide6` + `pyqtgraph`
+- (-) Larger exe (~40–70 MB) carrying Qt; PyInstaller build flags change
+- (-) Full UI-layer rewrite; no working build during the in-place migration
+
+**Alternatives considered**:
+- Keep tkinter + `SetProcessDpiAwareness` DPI fix: band-aid; Tk text still not vector-crisp
+- CustomTkinter: better look, still Tk rendering underneath
+- Matplotlib (QtAgg) for the chart: viable, closest port of MATLAB drawing, but pyqtgraph is lighter
+  and better at the live-updating time line
+- Plotly/Flet: browser/heavier; rejected for an in-app live ops view
+
+**Mobile note**: A future mobile app is treated as a separate effort (likely Flutter or a FastAPI
+backend + native front-end), not served by this Qt desktop work.
+
+**Relevant code**: `gui_wrapper.py`, `gui_components/`, `setup_report_processor.py` (MATLAB code removed)
+
+---

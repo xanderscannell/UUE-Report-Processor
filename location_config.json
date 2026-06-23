@@ -97,6 +97,14 @@
         {
             "name": "Notice",
             "enabled": false
+        },
+        {
+            "name": "UC Dining Room",
+            "enabled": true
+        },
+        {
+            "name": "UC A-Special Notice",
+            "enabled": true
         }
     ]
 }

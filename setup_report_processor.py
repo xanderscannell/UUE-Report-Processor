@@ -95,7 +95,7 @@ class SetupReportProcessor:
         # Load location configuration
         self._load_location_config(config_path)
 
-        # Store intermediate data for MATLAB CSV generation
+        # Store intermediate data for Gantt chart generation
         self._events = None
 
         # Extract report date for filename generation
@@ -550,9 +550,9 @@ class SetupReportProcessor:
         logger.info(f"Created {len(rows)} schedule rows from {len(events)} events")
         return rows
 
-    def create_matlab_event_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def create_gantt_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
-        Create single-row events for MATLAB CSV.
+        Create single-row events for the Gantt chart.
         Each event becomes: Location, StartTime (24h), EndTime (24h)
 
         Args:
@@ -568,11 +568,11 @@ class SetupReportProcessor:
             ...     "setup_time": "1:30 AM",
             ...     "closing_time": "2:00 PM"
             ... }]
-            >>> rows = processor.create_matlab_event_rows(events)
+            >>> rows = processor.create_gantt_rows(events)
             >>> rows[0]
             {'Location': 'UC 1227', 'StartTime': '01:30', 'EndTime': '14:00'}
         """
-        logger.info("Creating MATLAB event rows...")
+        logger.info("Creating Gantt event rows...")
         rows = []
 
         for event in events:
@@ -595,7 +595,7 @@ class SetupReportProcessor:
                 "EndTime": end_time_24h
             })
 
-        logger.info(f"Created {len(rows)} MATLAB event rows from {len(events)} events")
+        logger.info(f"Created {len(rows)} Gantt event rows from {len(events)} events")
         return rows
 
     def sort_chronologically(self, rows: List[Dict[str, str]]) -> pd.DataFrame:
@@ -657,7 +657,7 @@ class SetupReportProcessor:
 
         # Parse events
         events = self.extract_events(text)
-        self._events = events  # Store for MATLAB CSV
+        self._events = events  # Store for Gantt chart
 
         if not events:
             logger.warning("No valid events found in the PDF")
@@ -715,139 +715,6 @@ class SetupReportProcessor:
             logger.error(f"Error saving CSV file: {e}")
             raise
 
-    def save_to_matlab_csv(self, output_path: Optional[str] = None,
-                           auto_launch: bool = False,
-                           mlapp_path: Optional[str] = None) -> Optional[Path]:
-        """
-        Save events to MATLAB-formatted CSV and optionally launch app.
-
-        Format:
-        - Location,StartTime,EndTime (no header)
-
-        Args:
-            output_path: Output CSV path (auto-generated if None)
-            auto_launch: Whether to launch MATLAB with GanttChartApp
-            mlapp_path: Path to GanttChartApp.mlapp (searches if None)
-
-        Returns:
-            Path to saved CSV, or None if failed
-
-        Raises:
-            ValueError: If process() hasn't been called yet
-        """
-        import csv
-
-        # Validate prerequisites
-        if self._events is None:
-            raise ValueError("Must call process() before save_to_matlab_csv()")
-
-        # Create MATLAB rows
-        matlab_rows = self.create_matlab_event_rows(self._events)
-        if not matlab_rows:
-            logger.error("No valid events for MATLAB CSV")
-            return None
-
-        # Generate output path
-        if output_path is None:
-            output_path = self.get_output_basename() + "_matlab.csv"
-        output_path = Path(output_path)
-
-        # Write CSV
-        try:
-            with open(output_path, 'w', newline='', encoding='utf-8') as f:
-                # Write data (Location, StartTime, EndTime)
-                writer = csv.writer(f)
-                for row in matlab_rows:
-                    writer.writerow([row['Location'], row['StartTime'], row['EndTime']])
-
-            logger.info(f"Saved MATLAB CSV: {output_path}")
-
-            # Optional auto-launch
-            if auto_launch:
-                self._launch_matlab_app(output_path, mlapp_path)
-
-            return output_path
-
-        except Exception as e:
-            logger.error(f"Error saving MATLAB CSV: {e}")
-            return None
-
-    def _launch_matlab_app(self, csv_path: Path, mlapp_path: Optional[str] = None) -> bool:
-        """
-        Launch MATLAB and open GanttChartApp with the CSV file.
-
-        Args:
-            csv_path: Path to the MATLAB CSV file
-            mlapp_path: Path to GanttChartApp.mlapp (searches if None)
-
-        Returns:
-            True if launched successfully
-        """
-        import subprocess
-        import sys
-
-        # Find .mlapp file if not provided
-        if mlapp_path is None:
-            # Search in current directory and parent
-            search_paths = [
-                Path.cwd() / "GanttChartApp.mlapp",
-                self.pdf_path.parent / "GanttChartApp.mlapp",
-            ]
-
-            for path in search_paths:
-                if path.exists():
-                    mlapp_path = str(path)
-                    break
-
-            if mlapp_path is None:
-                logger.error("GanttChartApp.mlapp not found. Searched: " +
-                            ", ".join(str(p) for p in search_paths))
-                return False
-
-        mlapp_path = Path(mlapp_path)
-        if not mlapp_path.exists():
-            logger.error(f"MATLAB app not found: {mlapp_path}")
-            return False
-
-        # Build MATLAB command
-        # Command: matlab -r "run('GanttChartApp.mlapp')"
-        # CSV path is passed via GANTT_CSV_PATH environment variable
-        matlab_cmd = [
-            "matlab",
-            "-r",
-            f"run('{mlapp_path.as_posix()}')"
-        ]
-
-        try:
-            logger.info(f"Launching MATLAB with {mlapp_path.name}...")
-
-            # Set environment variable with CSV path for MATLAB to read
-            import os
-            env = os.environ.copy()
-            csv_full_path = str(csv_path.resolve())
-            env['GANTT_CSV_PATH'] = csv_full_path
-
-            logger.info(f"Setting GANTT_CSV_PATH environment variable to: {csv_full_path}")
-            logger.info(f"CSV file exists: {csv_path.exists()}")
-
-            if sys.platform == "win32":
-                # Windows: use START to launch in background
-                subprocess.Popen(matlab_cmd, shell=True, env=env)
-            else:
-                # macOS/Linux
-                subprocess.Popen(matlab_cmd, env=env)
-
-            logger.info(f"MATLAB launched with CSV: {csv_path}")
-            logger.info("CSV file will be loaded automatically in the app")
-            return True
-
-        except FileNotFoundError:
-            logger.error("MATLAB not found. Ensure MATLAB is installed and in PATH")
-            return False
-        except Exception as e:
-            logger.error(f"Error launching MATLAB: {e}")
-            return False
-
 
 def main():
     """Main entry point for the script."""
@@ -890,25 +757,6 @@ Examples:
         "--no-excel",
         action="store_true",
         help="Disable Excel output"
-    )
-
-    parser.add_argument(
-        "--matlab-csv",
-        action="store_true",
-        help="Generate MATLAB CSV output (default: False)"
-    )
-
-    parser.add_argument(
-        "--matlab-launch",
-        action="store_true",
-        help="Auto-launch MATLAB with GanttChartApp (requires --matlab-csv)"
-    )
-
-    parser.add_argument(
-        "--matlab-app",
-        type=str,
-        default=None,
-        help="Path to GanttChartApp.mlapp (auto-detected if not specified)"
     )
 
     parser.add_argument(
@@ -958,23 +806,6 @@ Examples:
         if args.csv:
             csv_path = args.output if args.output and args.output.endswith(".csv") else None
             processor.save_to_csv(df, csv_path)
-
-        if args.matlab_csv:
-            matlab_path = (
-                args.output if args.output and "_matlab.csv" in args.output
-                else None
-            )
-
-            result = processor.save_to_matlab_csv(
-                output_path=matlab_path,
-                auto_launch=args.matlab_launch,
-                mlapp_path=args.matlab_app
-            )
-
-            if result:
-                print(f"\nMATLAB CSV saved to: {result}")
-                if args.matlab_launch:
-                    print("Launching MATLAB...")
 
         print("\n" + "="*60)
         print("SUCCESS! Check the output files.")

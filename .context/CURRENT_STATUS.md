@@ -1,14 +1,33 @@
 # Project Status
 
-**Last updated**: 2026-02-11
+**Last updated**: 2026-06-23
 
 ## Current Position
 
-**Phase**: Release Preparation
-**Subphase**: First portable release
-**Progress**: Core features 100%, GUI complete, portable exe builds working
+**Phase**: GUI Modernization
+**Subphase**: tkinter → PySide6 migration + MATLAB Gantt replacement (ADR-004)
+**Progress**: GUI rewritten in PySide6; embedded pyqtgraph Gantt replaces MATLAB;
+all 49 tests pass; headless smoke test passes. Pending: on-display verification + exe rebuild.
 
-## Recently Completed
+## Recently Completed (2026-06-23 — PySide6 migration)
+
+- **GUI rewritten in PySide6**: `gui_wrapper.py` is now a `QMainWindow`; all
+  `gui_components/` widgets reimplemented in Qt (drop_zone, file_list, location_editor,
+  log_handler). Fixes high-DPI blurriness from tkinter.
+- **Embedded Gantt chart**: new `gui_components/gantt_window.py` (pyqtgraph) replaces
+  the external MATLAB `GanttChartApp`. Opens in a separate window via a "View Gantt"
+  button; live red current-time line on a 60s `QTimer`; handles midnight-crossing bars;
+  report selector when multiple PDFs are processed.
+- **Background worker**: `gui_components/worker.py` — `ProcessorWorker(QThread)` with
+  Qt signals (status/progress/gantt_ready/finished_all), replacing the Thread+queue model.
+- **MATLAB code removed from processor**: deleted `save_to_matlab_csv()` and
+  `_launch_matlab_app()`; removed `--matlab-*` CLI flags; renamed
+  `create_matlab_event_rows()` → `create_gantt_rows()` (now the chart's data source).
+- **Dependencies**: added `PySide6` + `pyqtgraph` to `requirements.txt`; dropped reliance
+  on `tkinterdnd2` (Qt has native drag-and-drop).
+- **Verified**: all 49 existing tests pass; offscreen GUI/Gantt smoke test passes.
+
+## Earlier Completed
 
 - **Location config v2 format**: Migrated from separate whitelist/blacklist arrays to single object array with `enabled` flags (`location_config.json`)
 - **Removed blacklist concept**: Disabled whitelist items replace the old blacklist; simplified `_match_whitelist_location()` in processor
@@ -23,26 +42,32 @@
 
 ## In Progress
 
-- [ ] Update README for first release
-- [ ] Final exe rebuild with all latest changes
+- [ ] Verify the PySide6 app on a real (scaled) display — confirm crispness and Gantt visuals
+- [ ] Rebuild the portable exe with the new Qt/pyqtgraph deps
+- [ ] Update README + GUI docs for the PySide6 UI and embedded Gantt
+- [x] Remove obsolete MATLAB artifacts (`GanttChartApp.mlapp`/`.txt`) and code references
 
 ## Next Up
 
-1. Rebuild exe with `pyinstaller --windowed --name SetupReportProcessor --icon=UUE.ico gui_wrapper.py`
-2. Copy `location_config.json` into `dist/SetupReportProcessor/`
-3. Zip `SetupReportProcessor/` folder for distribution
-4. Update README with usage instructions and release notes
+1. Run `python gui_wrapper.py`, process a real PDF, open "View Gantt", check DPI crispness
+2. Rebuild exe (Qt needs no special flags; PyInstaller ships PySide6/pyqtgraph hooks):
+   `pyinstaller --windowed --name SetupReportProcessor --icon=UUE.ico gui_wrapper.py`
+   — confirm `UUE.ico` lands next to the exe (used for the window icon at runtime)
+3. Copy `location_config.json` into `dist/SetupReportProcessor/`
+4. Smoke-test the exe (window + Gantt), then zip for distribution
+5. Update README/documentation for the new UI
 
 ## Active Files and Modules
 
 ```
-setup_report_processor.py    [status: stable, v2 config, no blacklist]
-gui_wrapper.py               [status: stable, icon support, desktop shortcut, layout fixed]
-gui_components/              [status: stable, includes LocationEditor]
+setup_report_processor.py    [status: stable, MATLAB code removed, create_gantt_rows]
+gui_wrapper.py               [status: rewritten in PySide6 (MainWindow)]
+gui_components/              [status: rewritten in PySide6; +worker.py, +gantt_window.py]
 location_config.json         [status: stable, v2 format]
 test_setup_report_processor.py [status: stable, 49/49 passing]
-UUE.ico                      [status: new, app icon]
-.gitignore                   [status: updated, *.spec excluded]
+requirements.txt             [status: updated, +PySide6 +pyqtgraph]
+UUE.ico                      [status: app icon — must ship beside exe for window icon]
+build_release.bat            [status: new — builds + zips the portable release]
 ```
 
 ## Recent Decisions

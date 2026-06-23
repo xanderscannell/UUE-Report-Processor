@@ -1,89 +1,80 @@
 """
-Custom Logging Handler for GUI
-================================
-Redirects logging output to a tkinter Text widget with color coding.
+Logging Bridge for the Qt GUI
+=============================
+Routes Python logging records to a QPlainTextEdit with color coding.
+
+A logging.Handler cannot safely touch widgets from a worker thread, so the
+handler only emits a Qt signal. Qt delivers queued signals on the GUI thread,
+which makes the cross-thread hand-off safe.
 """
 
+import html
 import logging
-from tkinter import scrolledtext
+
+from PySide6.QtCore import QObject, Signal
+from PySide6.QtWidgets import QPlainTextEdit
+
+from .theme import is_dark_mode
 
 
-class TextHandler(logging.Handler):
-    """
-    Custom logging handler that writes to a tkinter ScrolledText widget.
+class QtLogHandler(logging.Handler, QObject):
+    """Logging handler that re-emits formatted records as a Qt signal."""
 
-    Features:
-    - Thread-safe updates using widget.after()
-    - Color-coded messages by log level
-    - Auto-scroll to bottom
-    - Optional line limit to prevent memory issues
-    """
+    message = Signal(str, str)  # (formatted message, level name)
 
-    def __init__(self, text_widget: scrolledtext.ScrolledText, max_lines: int = 1000):
-        """
-        Initialize the text handler.
-
-        Args:
-            text_widget: ScrolledText widget to write logs to
-            max_lines: Maximum number of lines to keep (prevents memory bloat)
-        """
-        super().__init__()
-        self.text_widget = text_widget
-        self.max_lines = max_lines
-
-        # Configure widget as read-only
-        self.text_widget.config(state="disabled")
-
-        # Configure color tags
-        self.text_widget.tag_config("DEBUG", foreground="gray")
-        self.text_widget.tag_config("INFO", foreground="black")
-        self.text_widget.tag_config("WARNING", foreground="orange")
-        self.text_widget.tag_config("ERROR", foreground="red")
-        self.text_widget.tag_config("CRITICAL", foreground="red", font=("Arial", 10, "bold"))
+    def __init__(self):
+        logging.Handler.__init__(self)
+        QObject.__init__(self)
 
     def emit(self, record: logging.LogRecord):
-        """
-        Emit a log record to the text widget.
-
-        Args:
-            record: LogRecord to display
-        """
         try:
             msg = self.format(record)
-            tag = record.levelname
-
-            # Schedule UI update on main thread
-            self.text_widget.after(0, lambda: self._append_text(msg, tag))
+            self.message.emit(msg, record.levelname)
         except Exception:
             self.handleError(record)
 
-    def _append_text(self, message: str, tag: str):
-        """
-        Append text to the widget (must run on main thread).
 
-        Args:
-            message: Message to append
-            tag: Tag name for styling (log level)
-        """
-        # Enable editing
-        self.text_widget.config(state="normal")
+class LogPanel(QPlainTextEdit):
+    """Read-only, auto-scrolling, color-coded log display."""
 
-        # Append message
-        self.text_widget.insert("end", message + "\n", tag)
+    def __init__(self, max_lines: int = 1000, parent=None):
+        super().__init__(parent)
+        self.max_lines = max_lines
+        self.setReadOnly(True)
+        self.setMaximumBlockCount(max_lines)
+        self.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        # Follow the system theme for background/default text.
+        self.setStyleSheet(
+            "QPlainTextEdit { background: palette(base); color: palette(text); }"
+        )
 
-        # Trim old lines if needed
-        line_count = int(self.text_widget.index("end-1c").split(".")[0])
-        if line_count > self.max_lines:
-            self.text_widget.delete("1.0", f"{line_count - self.max_lines}.0")
+    def append_record(self, message: str, level: str):
+        """Append one colored line (connected to QtLogHandler.message)."""
+        safe = html.escape(message)
+        color = self._level_color(level)
+        if color:
+            weight = "bold" if level == "CRITICAL" else "normal"
+            self.appendHtml(
+                f'<span style="color:{color}; font-weight:{weight};">{safe}</span>'
+            )
+        else:
+            # INFO: inherit the palette text color so it reads on light or dark.
+            self.appendHtml(safe)
+        bar = self.verticalScrollBar()
+        bar.setValue(bar.maximum())
 
-        # Auto-scroll to bottom
-        self.text_widget.see("end")
+    @staticmethod
+    def _level_color(level: str):
+        """Theme-aware color per level, or None to use the default text color."""
+        dark = is_dark_mode()
+        if level in ("ERROR", "CRITICAL"):
+            return "#ef5350" if dark else "#c62828"
+        if level == "WARNING":
+            return "#ffb74d" if dark else "#e65100"
+        if level == "DEBUG":
+            return "#9e9e9e" if dark else "#6d6d6d"
+        return None  # INFO
 
-        # Disable editing
-        self.text_widget.config(state="disabled")
-
-    def clear(self):
-        """Clear all text from the widget."""
-        self.text_widget.config(state="normal")
-        self.text_widget.delete("1.0", "end")
-        self.text_widget.config(state="disabled")
+    def clear_log(self):
+        """Clear all text from the panel."""
+        self.clear()

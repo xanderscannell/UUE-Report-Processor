@@ -35,6 +35,20 @@ def test_installation():
         return False
 
     try:
+        import PySide6
+        print("[OK] PySide6 installed")
+    except ImportError:
+        print("[FAIL] PySide6 NOT installed (required for the GUI)")
+        return False
+
+    try:
+        import pyqtgraph
+        print("[OK] pyqtgraph installed")
+    except ImportError:
+        print("[FAIL] pyqtgraph NOT installed (required for the Gantt chart)")
+        return False
+
+    try:
         import pytest
         print("[OK] pytest installed")
     except ImportError:

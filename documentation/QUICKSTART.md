@@ -6,7 +6,7 @@
 1. **Install Python** (if not already installed)
    - Download from https://python.org
    - Version 3.7 or higher required
-   - ✓ Make sure to check "Add Python to PATH" during installation
+   - Make sure to check "Add Python to PATH" during installation
 
 2. **Set up the project**
    ```bash
@@ -57,13 +57,13 @@ batch_process.bat
 
 ### What it Does
 
-1. ✓ Extracts events from Daily Setup Report PDFs
-2. ✓ Filters events by location (UC, RUC, FCS Michigan, FCS 180, FCS Dining Rm D)
-3. ✓ Creates two entries per event:
+1. Extracts events from Daily Setup Report PDFs
+2. Filters events by location (UC, RUC, FCS Michigan, FCS 180, FCS Dining Rm D)
+3. Creates two entries per event:
    - Setup Ready By time
    - Closing time
-4. ✓ Sorts everything chronologically
-5. ✓ Exports to Excel/CSV
+4. Sorts everything chronologically
+5. Exports to Excel/CSV
 
 ### Output Format
 
@@ -103,6 +103,6 @@ pip install -r requirements.txt
 
 ---
 
-**Ready to go!** 🚀
+**Ready to go!**
 
 For full documentation, see README.md

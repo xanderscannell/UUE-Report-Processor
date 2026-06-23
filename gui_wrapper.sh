@@ -29,16 +29,8 @@ if [ ! -d "venv" ]; then
     echo "Installing dependencies..."
     pip install -r requirements.txt
     if [ $? -ne 0 ]; then
-        echo "ERROR: Failed to install core dependencies."
+        echo "ERROR: Failed to install dependencies."
         exit 1
-    fi
-
-    # Try to install GUI dependencies (optional)
-    pip install -r requirements-gui.txt
-    if [ $? -ne 0 ]; then
-        echo "Warning: tkinterdnd2 installation failed."
-        echo "Drag-and-drop will use fallback mode (click to browse)."
-        echo
     fi
 
     echo

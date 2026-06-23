@@ -45,6 +45,9 @@ ENV/
 # PyInstaller
 *.spec
 
+# Release artifacts (produced by build_release.bat)
+*.zip
+
 # OS
 .DS_Store
 Thumbs.db

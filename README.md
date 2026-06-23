@@ -6,9 +6,10 @@ A Python application that extracts event schedules from Daily Setup Report PDFs 
 
 - **Automated PDF Processing**: Extracts event data from Daily Setup Report PDFs
 - **Excel & CSV Output**: Generates professional schedule files
+- **Interactive Gantt Chart**: Built-in timeline view of the day's events with a live current-time marker
 - **Smart Location Filtering**: Configurable whitelist of venue locations
 - **Chronological Sorting**: Automatically orders events by setup time
-- **GUI Interface**: Drag-and-drop desktop app with batch processing
+- **GUI Interface**: PySide6 desktop app — drag-and-drop, batch processing, crisp on high-DPI/scaled displays, follows system light/dark theme
 - **Location Editor**: Built-in GUI for managing the location whitelist
 - **Desktop Shortcut**: One-click shortcut creation from the app
 - **Portable Distribution**: Runs as a standalone `.exe` with no Python required
@@ -37,9 +38,18 @@ SetupReportProcessor/
 The GUI provides drag-and-drop PDF processing:
 
 1. **Add Files**: Drag PDF files onto the drop zone, or click to browse
-2. **Select Output**: Choose Excel, CSV, or both
+2. **Select Output**: Choose Excel, CSV, and/or **Auto-launch Gantt Chart** (at least one output is required)
 3. **Process**: Click **Process Files** to generate schedules
-4. **View Output**: Click **Open Output Folder** to see results
+4. **View Output**: Click **Open Output Folder** for the files, or **View Gantt** for the timeline chart
+
+### Gantt Chart
+
+Click **View Gantt** (or enable **Auto-launch Gantt Chart** before processing) to open the event timeline:
+
+- One horizontal bar per event, spanning setup time to closing time
+- Time-of-day axis from 6 AM to midnight; events labeled by location
+- A live red line marks the current time, refreshing every minute
+- Process multiple PDFs to get a report selector for switching between days
 
 ### Location Whitelist
 
@@ -98,7 +108,7 @@ optional arguments:
 3. **Filter by Location**: Keeps only events at locations enabled in the whitelist
 4. **Create Schedule**: Generates two rows per event (Setup Ready By + Closing)
 5. **Sort Chronologically**: Orders all entries by time
-6. **Export**: Saves to Excel and/or CSV
+6. **Export**: Saves to Excel and/or CSV, and/or displays the Gantt chart
 
 ## Output Format
 
@@ -139,7 +149,6 @@ source venv/bin/activate     # macOS/Linux
 
 # Install dependencies
 pip install -r requirements.txt
-pip install -r requirements-gui.txt  # Optional: enhanced drag-and-drop
 
 # Run tests
 python -m pytest test_setup_report_processor.py -v
@@ -150,10 +159,20 @@ python gui_wrapper.py
 
 ### Building the Portable Exe
 
+On Windows, run the build script:
+
+```bat
+build_release.bat /deps
+```
+
+This installs dependencies, runs PyInstaller, copies `location_config.json` and `UUE.ico` next to the exe, and produces `SetupReportProcessor.zip` ready for distribution. (Omit `/deps` to skip the dependency install on rebuilds.)
+
+To build manually:
+
 ```bash
 pip install pyinstaller
 pyinstaller --windowed --name SetupReportProcessor --icon=UUE.ico gui_wrapper.py
-cp location_config.json dist/SetupReportProcessor/
+cp location_config.json UUE.ico dist/SetupReportProcessor/
 ```
 
 Then zip the `dist/SetupReportProcessor/` folder for distribution.
@@ -163,18 +182,21 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 ```
 .
 ├── setup_report_processor.py     # Core processor (CLI + library)
-├── gui_wrapper.py                # GUI application
+├── gui_wrapper.py                # GUI application (PySide6)
 ├── gui_components/               # GUI component modules
-│   ├── settings.py               #   GUI defaults and colors
+│   ├── settings.py               #   GUI defaults and Gantt config
+│   ├── theme.py                  #   Light/dark theme helpers
 │   ├── drop_zone.py              #   Drag-and-drop zone
 │   ├── file_list.py              #   File list manager
-│   ├── log_handler.py            #   Log text handler
-│   └── location_editor.py        #   Location whitelist editor
+│   ├── log_handler.py            #   Log routing + display panel
+│   ├── worker.py                 #   Background processing thread
+│   ├── location_editor.py        #   Location whitelist editor
+│   └── gantt_window.py           #   Embedded Gantt chart
 ├── location_config.json          # Location whitelist configuration
 ├── UUE.ico                       # Application icon
 ├── test_setup_report_processor.py # Test suite (49 tests)
-├── requirements.txt              # Core dependencies
-├── requirements-gui.txt          # GUI-specific dependencies
+├── requirements.txt              # Dependencies
+├── build_release.bat             # Builds + zips the portable release
 └── README.md                     # This file
 ```
 
@@ -185,8 +207,9 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 - pandas (data manipulation)
 - openpyxl (Excel file generation)
 
-**GUI** (optional):
-- tkinterdnd2 (enhanced drag-and-drop)
+**GUI**:
+- PySide6 (Qt desktop interface)
+- pyqtgraph (Gantt chart rendering)
 
 **Build** (optional):
 - PyInstaller (portable exe generation)
@@ -212,6 +235,12 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 
 ## Version History
 
+- **v3.0.0** (2026-06-23): PySide6 rewrite + embedded Gantt chart
+  - Migrated the GUI from tkinter to PySide6 — crisp high-DPI rendering, native drag-and-drop, and automatic light/dark theme support
+  - Replaced the external MATLAB Gantt app with a built-in pyqtgraph chart (live current-time marker), opened via **View Gantt** or auto-launched on completion
+  - Added the **Auto-launch Gantt Chart** output option; at least one output (Excel/CSV/Gantt) is now required to process
+  - Removed the MATLAB CSV output and the `--matlab-*` CLI flags
+  - Added `build_release.bat` for one-step portable-release builds
 - **v2.0.0** (2026-02-11): GUI Release
   - Desktop GUI with drag-and-drop file processing
   - Location whitelist editor (add/remove/toggle locations)

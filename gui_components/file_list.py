@@ -1,155 +1,97 @@
 """
 File Queue Manager Widget
-===========================
-Manages the list of PDF files queued for processing.
+=========================
+Manages the list of PDF files queued for processing (PySide6).
 """
 
-import tkinter as tk
-from tkinter import ttk
 from pathlib import Path
 from typing import List
-from .settings import DIMENSIONS
+
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
-class FileListManager(tk.Frame):
-    """
-    Widget for managing the file processing queue.
+class FileListManager(QWidget):
+    """Widget for managing the file processing queue."""
 
-    Features:
-    - Display list of queued files
-    - Remove individual files
-    - Clear all files
-    - Get list of files for processing
-    """
+    files_changed = Signal()
 
-    def __init__(self, parent):
-        """
-        Initialize the file list manager.
-
-        Args:
-            parent: Parent widget
-        """
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.files: List[Path] = []
+        self._build_ui()
 
-        # Create UI components
-        self._create_widgets()
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-    def _create_widgets(self):
-        """Create the file list UI components."""
-        # Header with count
-        header_frame = tk.Frame(self)
-        header_frame.pack(fill=tk.X, pady=(0, 5))
+        header = QHBoxLayout()
+        self.count_label = QLabel("Files to Process (0):")
+        self.count_label.setStyleSheet("font-weight: bold;")
+        header.addWidget(self.count_label)
+        header.addStretch()
 
-        self.count_label = tk.Label(
-            header_frame,
-            text="Files to Process (0):",
-            font=("Arial", 10, "bold"),
+        self.clear_button = QPushButton("Clear All")
+        self.clear_button.setEnabled(False)
+        self.clear_button.clicked.connect(self.clear_all)
+        header.addWidget(self.clear_button)
+        layout.addLayout(header)
+
+        self.list_widget = QListWidget()
+        self.list_widget.itemDoubleClicked.connect(
+            lambda _: self.remove_selected()
         )
-        self.count_label.pack(side=tk.LEFT)
+        layout.addWidget(self.list_widget)
 
-        self.clear_button = tk.Button(
-            header_frame,
-            text="Clear All",
-            command=self.clear_all,
-            state=tk.DISABLED,
-        )
-        self.clear_button.pack(side=tk.RIGHT)
-
-        # Listbox with scrollbar
-        list_frame = tk.Frame(self)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-
-        scrollbar = tk.Scrollbar(list_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.listbox = tk.Listbox(
-            list_frame,
-            height=8,
-            yscrollcommand=scrollbar.set,
-            selectmode=tk.SINGLE,
-        )
-        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.listbox.yview)
-
-        # Bind double-click to remove
-        self.listbox.bind("<Double-Button-1>", lambda e: self.remove_selected())
-
-        # Buttons frame
-        buttons_frame = tk.Frame(self)
-        buttons_frame.pack(fill=tk.X, pady=(5, 0))
-
-        self.remove_button = tk.Button(
-            buttons_frame,
-            text="Remove Selected",
-            command=self.remove_selected,
-            state=tk.DISABLED,
-        )
-        self.remove_button.pack(side=tk.LEFT)
+        self.remove_button = QPushButton("Remove Selected")
+        self.remove_button.setEnabled(False)
+        self.remove_button.clicked.connect(self.remove_selected)
+        layout.addWidget(self.remove_button)
 
     def add_files(self, paths: List[Path]):
-        """
-        Add files to the queue (avoiding duplicates).
-
-        Args:
-            paths: List of Path objects to add
-        """
-        added_count = 0
-
+        """Add files to the queue, avoiding duplicates."""
+        added = 0
         for path in paths:
-            # Avoid duplicates
             if path not in self.files:
                 self.files.append(path)
-                self.listbox.insert(tk.END, str(path.name))
-                added_count += 1
-
-        # Update UI
-        if added_count > 0:
-            self._update_count()
-            self._update_button_states()
+                self.list_widget.addItem(path.name)
+                added += 1
+        if added:
+            self._refresh()
 
     def remove_selected(self):
         """Remove the currently selected file from the queue."""
-        selection = self.listbox.curselection()
-        if selection:
-            index = selection[0]
-            self.listbox.delete(index)
-            del self.files[index]
-            self._update_count()
-            self._update_button_states()
+        row = self.list_widget.currentRow()
+        if row < 0:
+            return
+        self.list_widget.takeItem(row)
+        del self.files[row]
+        self._refresh()
 
     def clear_all(self):
         """Clear all files from the queue."""
-        self.listbox.delete(0, tk.END)
+        self.list_widget.clear()
         self.files.clear()
-        self._update_count()
-        self._update_button_states()
+        self._refresh()
 
     def get_files(self) -> List[Path]:
-        """
-        Get the list of queued files.
-
-        Returns:
-            List of Path objects
-        """
+        """Return a copy of the queued files."""
         return self.files.copy()
 
     def has_files(self) -> bool:
-        """
-        Check if there are files in the queue.
+        """True if the queue is not empty."""
+        return bool(self.files)
 
-        Returns:
-            True if queue is not empty
-        """
-        return len(self.files) > 0
-
-    def _update_count(self):
-        """Update the file count label."""
+    def _refresh(self):
         count = len(self.files)
-        self.count_label.config(text=f"Files to Process ({count}):")
-
-    def _update_button_states(self):
-        """Update button enabled/disabled states."""
-        has_files = self.has_files()
-        self.clear_button.config(state=tk.NORMAL if has_files else tk.DISABLED)
-        self.remove_button.config(state=tk.NORMAL if has_files else tk.DISABLED)
+        self.count_label.setText(f"Files to Process ({count}):")
+        self.clear_button.setEnabled(count > 0)
+        self.remove_button.setEnabled(count > 0)
+        self.files_changed.emit()

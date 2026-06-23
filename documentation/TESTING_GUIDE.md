@@ -36,7 +36,7 @@ Expected output:
 pytest test_setup_report_processor.py -v
 ```
 
-Expected: All tests should pass ✓
+Expected: All tests should pass
 
 ### Test with Coverage
 ```bash
@@ -83,10 +83,10 @@ python setup_report_processor.py DailySetupReport__19_.pdf --csv
 ```
 
 **What to verify**:
-- ✓ Processing completes without errors
-- ✓ Excel file is generated
-- ✓ Data looks correct (compare with previous version)
-- ✓ Log file contains detailed information
+- Processing completes without errors
+- Excel file is generated
+- Data looks correct (compare with previous version)
+- Log file contains detailed information
 
 ### 2. Test File Validation (New Feature)
 ```bash
@@ -166,9 +166,9 @@ python setup_report_processor.py edge_case.pdf --verbose
 ```
 
 Check that:
-- ✓ Script doesn't crash
-- ✓ Error messages are helpful
-- ✓ Log file shows what went wrong
+- Script doesn't crash
+- Error messages are helpful
+- Log file shows what went wrong
 
 ---
 
@@ -290,13 +290,13 @@ pip install pytest pytest-cov
 
 The improvements are successful if:
 
-✅ All unit tests pass
-✅ Installation test passes
-✅ Processing produces same output as before
-✅ Performance is same or better
-✅ Error messages are clearer
-✅ Log file has more details
-✅ No new bugs introduced
+- All unit tests pass
+- Installation test passes
+- Processing produces same output as before
+- Performance is same or better
+- Error messages are clearer
+- Log file has more details
+- No new bugs introduced
 
 ---
 
@@ -319,11 +319,11 @@ python setup_report_processor.py your_report.pdf
 
 Once all tests pass:
 
-1. ✅ Archive old version as backup
-2. ✅ Deploy new version
-3. ✅ Update documentation if needed
-4. ✅ Commit changes to git
-5. ✅ Create a release tag (e.g., v1.1.0)
+1. Archive old version as backup
+2. Deploy new version
+3. Update documentation if needed
+4. Commit changes to git
+5. Create a release tag (e.g., v1.1.0)
 
 ---
 

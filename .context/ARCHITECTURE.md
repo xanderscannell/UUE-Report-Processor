@@ -38,30 +38,35 @@ PDF File ──► SetupReportProcessor ──► Excel/CSV Output
 ### GUI Application
 
 **Purpose**: Drag-and-drop interface for batch processing PDFs
-**Tech stack**: Python, tkinter, optional tkinterdnd2
+**Tech stack**: Python, PySide6 (Qt), pyqtgraph
 **Key files**:
-- `gui_wrapper.py` (lines 1-515)
-- `gui_components/` (4 modules)
+- `gui_wrapper.py` (`MainWindow`, `QApplication` entry point)
+- `gui_components/` (7 modules)
 
 **Interfaces**:
-- Input: PDF files via drag-and-drop or file dialog
-- Output: Excel/CSV files in configured output directory
+- Input: PDF files via native drag-and-drop or file dialog
+- Output: Excel/CSV files in configured output directory; in-app Gantt chart
 
 **Notes**:
-- `ProcessorWorker` (line 32) runs processing in a background thread to keep UI responsive
-- Queue-based communication between worker and GUI
-- Graceful fallback when tkinterdnd2 is not installed (click-to-browse instead of drag-drop)
+- `ProcessorWorker` is a `QThread`; communicates with the GUI via Qt signals
+  (delivered on the GUI thread automatically — no manual queue polling)
+- High-DPI crisp rendering (Qt6 per-monitor scaling, `PassThrough` rounding policy)
+- Native Qt drag-and-drop — the old `tkinterdnd2` dependency is gone
+- See [DECISIONS.md](DECISIONS.md) ADR-004 for the tkinter→PySide6 migration
 
 ---
 
 ### GUI Components
 
-**Purpose**: Modular, reusable UI widgets
+**Purpose**: Modular, reusable UI widgets (PySide6)
 **Key files**:
-- `gui_components/settings.py` — colors, defaults, window config
-- `gui_components/drop_zone.py` — drag-and-drop file input widget
-- `gui_components/file_list.py` — file queue display and management
-- `gui_components/log_handler.py` — routes Python logging to tkinter Text widget
+- `gui_components/settings.py` — colors, defaults, window + Gantt config
+- `gui_components/drop_zone.py` — native drag-and-drop `QFrame`
+- `gui_components/file_list.py` — file queue (`QListWidget`)
+- `gui_components/log_handler.py` — `QtLogHandler` (logging→Qt signal) + `LogPanel`
+- `gui_components/location_editor.py` — whitelist editor `QDialog`
+- `gui_components/worker.py` — `ProcessorWorker` background `QThread`
+- `gui_components/gantt_window.py` — embedded pyqtgraph Gantt chart (replaces MATLAB)
 
 ---
 
@@ -78,7 +83,7 @@ PDF File ──► SetupReportProcessor ──► Excel/CSV Output
 5. **Location Filtering**: `_is_valid_location()` applies blacklist then whitelist rules
 6. **Row Creation**: `create_schedule_rows()` generates 2 rows per event (Setup Ready By + Closing)
 7. **Sorting**: `sort_chronologically()` parses times and sorts the DataFrame
-8. **Output**: `save_to_excel()` / `save_to_csv()` / `save_to_matlab_csv()` write final files
+8. **Output**: `save_to_excel()` / `save_to_csv()` write final files; `create_gantt_rows()` feeds the in-app Gantt chart
 
 ## External Dependencies
 
@@ -87,8 +92,8 @@ PDF File ──► SetupReportProcessor ──► Excel/CSV Output
 | pdfplumber | PDF text extraction | 0.11.x |
 | pandas | DataFrame operations, CSV export | 2.1.4+ |
 | openpyxl | Excel file generation | 3.1.2+ |
-| tkinter | GUI framework | built-in |
-| tkinterdnd2 | Enhanced drag-and-drop (optional) | 0.3.0+ |
+| PySide6 | GUI framework (Qt for Python) | 6.6+ |
+| pyqtgraph | Embedded Gantt chart rendering | 0.13+ |
 | pytest | Unit testing | 7.4.0+ |
 
 ## Key Design Patterns
