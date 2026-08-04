@@ -74,6 +74,8 @@ PDF File ──► SetupReportProcessor ──► Excel/CSV Output
 - `gui_components/result_panel.py` — post-run summary screen
 - `gui_components/keep_awake.py` — `KeepAwake`, an optional OS sleep/display
   inhibitor (Windows `SetThreadExecutionState`); a no-op elsewhere
+- `gui_components/preferences.py` — `Preferences`, persisted to
+  `gui_preferences.json` beside the exe (see ADR-007)
 - `gui_components/log_handler.py` — `QtLogHandler` (logging→Qt signal) + `LogPanel`
 - `gui_components/location_editor.py` — whitelist editor `QDialog`
 - `gui_components/building_config.py` — building prefix → label + palette slot;
@@ -85,6 +87,12 @@ PDF File ──► SetupReportProcessor ──► Excel/CSV Output
 **Theming rule**: custom-painted widgets must read colors from `style.tokens()`,
 which returns the scheme `apply_theme()` selected. Asking the OS directly
 (`is_dark_mode()`) inside a widget breaks any forced light/dark run.
+
+**Two config files, two lifecycles.** `location_config.json` is authored
+configuration — it ships with the app, is hand-editable, and gets replaced
+wholesale. `gui_preferences.json` is runtime state the app rewrites whenever a
+toggle moves, created on demand and gitignored. Keeping them apart means a stray
+click on a preference can never put hand-edited venue config at risk (ADR-007).
 
 **`location_config.json` holds two independent blocks**: `locations` (read by
 both the processor and the GUI) and `buildings` (GUI only — timeline colors). The

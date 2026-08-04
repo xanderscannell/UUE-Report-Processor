@@ -39,6 +39,7 @@
     file_list.py              # File queue widget
     result_panel.py           # Post-run summary screen
     keep_awake.py             # OS sleep/display inhibitor (Windows only)
+    preferences.py            # Persisted user preferences (gui_preferences.json)
     log_handler.py            # Logging widget
     location_editor.py        # Whitelist editor dialog
     worker.py                 # Background QThread

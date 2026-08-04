@@ -12,6 +12,11 @@ from datetime import datetime
 from pathlib import Path
 from setup_report_processor import SetupReportProcessor
 
+# Imported directly rather than via the package, so the suite stays runnable
+# without PySide6 installed.
+from gui_components.preferences import Preferences
+from gui_components.settings import GUI_DEFAULTS
+
 
 class TestInitialization:
     """Test processor initialization."""
@@ -550,6 +555,66 @@ class TestConfigLoading:
         processor = SetupReportProcessor(str(pdf_file), config_path=str(config_file))
         assert processor._match_whitelist_location("Test Room 101 Extra Junk") == "Test Room 101"
         assert processor._match_whitelist_location("UC 1227") is None
+
+
+class TestPreferences:
+    """Test persistence of GUI preferences (no Qt required)."""
+
+    def test_defaults_when_file_missing(self, tmp_path):
+        """Test that a first run falls back to the shipped defaults."""
+        prefs = Preferences.load(tmp_path / "gui_preferences.json")
+        assert prefs.get_bool("excel_enabled") is True
+        assert prefs.get_bool("keep_awake") is False
+
+    def test_round_trip(self, tmp_path):
+        """Test that saved preferences come back on the next load."""
+        path = tmp_path / "gui_preferences.json"
+        prefs = Preferences()
+        prefs.set("keep_awake", True)
+        prefs.set("excel_enabled", False)
+        prefs.set("output_dir", tmp_path)
+        assert prefs.save(path) is True
+
+        reloaded = Preferences.load(path)
+        assert reloaded.get_bool("keep_awake") is True
+        assert reloaded.get_bool("excel_enabled") is False
+        assert reloaded.get_path("output_dir") == tmp_path
+
+    def test_set_reports_whether_anything_changed(self):
+        """Test that set() only reports True for a real change."""
+        prefs = Preferences()
+        assert prefs.set("keep_awake", False) is False
+        assert prefs.set("keep_awake", True) is True
+
+    def test_unknown_key_is_ignored(self):
+        """Test that an unknown preference is refused, not stored."""
+        prefs = Preferences()
+        assert prefs.set("not_a_preference", True) is False
+        assert "not_a_preference" not in prefs.values
+
+    def test_corrupt_file_falls_back_to_defaults(self, tmp_path):
+        """Test that a malformed file degrades to defaults instead of raising."""
+        path = tmp_path / "gui_preferences.json"
+        path.write_text("{ this is not json", encoding="utf-8")
+
+        prefs = Preferences.load(path)
+        assert prefs.get_bool("excel_enabled") is True
+
+    def test_unreachable_output_dir_falls_back(self, tmp_path):
+        """Test that a saved folder on a missing drive reverts to the default."""
+        path = tmp_path / "gui_preferences.json"
+        path.write_text(
+            json.dumps({"output_dir": "Z:\\gone\\reports", "csv_enabled": True}),
+            encoding="utf-8",
+        )
+
+        prefs = Preferences.load(path)
+        assert prefs.get_path("output_dir") == Path(GUI_DEFAULTS["output_dir"])
+        assert prefs.get_bool("csv_enabled") is True  # other keys still load
+
+    def test_save_failure_is_reported_not_raised(self):
+        """Test that an unwritable location returns False rather than raising."""
+        assert Preferences().save(Path("Z:\\nowhere\\gui_preferences.json")) is False
 
 
 if __name__ == "__main__":

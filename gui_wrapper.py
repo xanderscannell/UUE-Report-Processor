@@ -22,6 +22,7 @@ import logging
 import os
 import subprocess
 import sys
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -63,6 +64,8 @@ from gui_components import (
     HeaderBar,
     KeepAwake,
     LocationEditor,
+    PREFS_FILENAME,
+    Preferences,
     LogPanel,
     ProcessorWorker,
     QtLogHandler,
@@ -96,14 +99,20 @@ class MainWindow(QMainWindow):
         self.processing = False
         self.gantt_window = None
         self._gantt_data = {}  # {report label: gantt rows}
-        self.output_dir = Path(GUI_DEFAULTS["output_dir"])
+        self.prefs_path = BASE_DIR / PREFS_FILENAME
+        self.prefs = Preferences.load(self.prefs_path)
+        self.output_dir = self.prefs.get_path("output_dir")
         self.config_path = BASE_DIR / "location_config.json"
         self.building_colors = BuildingColors.load(self.config_path)
         self.keep_awake = KeepAwake()
-        self.keep_awake.set_enabled(GUI_DEFAULTS["keep_awake"])
+        self.keep_awake_action = None
 
         self._build_ui()
         self._setup_logging()
+        # Applied after logging is wired so the outcome reaches the log panel.
+        # Deliberately not via _set_keep_awake: a platform that refuses should
+        # log, not greet the user with a dialog at startup.
+        self.keep_awake.set_enabled(self.prefs.get_bool("keep_awake"))
         self._set_stage(STAGE_EMPTY)
 
     # ==================================================================
@@ -229,15 +238,17 @@ class MainWindow(QMainWindow):
 
         self.excel_toggle = QPushButton("Excel  .xlsx")
         self.csv_toggle = QPushButton("CSV  .csv")
-        for toggle, default in (
-            (self.excel_toggle, GUI_DEFAULTS["excel_enabled"]),
-            (self.csv_toggle, GUI_DEFAULTS["csv_enabled"]),
+        for toggle, key in (
+            (self.excel_toggle, "excel_enabled"),
+            (self.csv_toggle, "csv_enabled"),
         ):
             toggle.setProperty("variant", "toggle")
             toggle.setCheckable(True)
-            toggle.setChecked(default)
+            toggle.setChecked(self.prefs.get_bool(key))
             toggle.setCursor(Qt.PointingHandCursor)
+            # Connected after setChecked, so restoring state is not a "change".
             toggle.toggled.connect(self._update_process_button)
+            toggle.toggled.connect(partial(self._remember, key))
             row.addWidget(toggle)
 
         row.addStretch()
@@ -421,8 +432,8 @@ class MainWindow(QMainWindow):
     # Logging
     # ==================================================================
     def _setup_logging(self):
-        self._verbose = GUI_DEFAULTS["verbose_logging"]
-        self._gantt_autolaunch = GUI_DEFAULTS["gantt_autolaunch"]
+        self._verbose = self.prefs.get_bool("verbose_logging")
+        self._gantt_autolaunch = self.prefs.get_bool("gantt_autolaunch")
 
         self.log_handler = QtLogHandler()
         self.log_handler.setFormatter(logging.Formatter("%(levelname)-7s %(message)s"))
@@ -432,22 +443,32 @@ class MainWindow(QMainWindow):
         processor_logger.addHandler(self.log_handler)
         self._set_verbose(self._verbose)
 
+    def _remember(self, key: str, value):
+        """Persist one preference, if it actually changed."""
+        if self.prefs.set(key, value):
+            self.prefs.save(self.prefs_path)
+
     def _set_verbose(self, enabled: bool):
         self._verbose = enabled
         logging.getLogger("setup_report_processor").setLevel(
             logging.DEBUG if enabled else logging.INFO
         )
+        self._remember("verbose_logging", enabled)
 
     def _set_gantt_autolaunch(self, enabled: bool):
         self._gantt_autolaunch = enabled
+        self._remember("gantt_autolaunch", enabled)
 
     def _set_keep_awake(self, enabled: bool):
         """Toggle the sleep inhibitor, re-syncing the menu if the OS says no."""
         applied = self.keep_awake.set_enabled(enabled)
+        # Remember what actually took effect, never a request the OS refused.
+        self._remember("keep_awake", applied)
         if applied != enabled:
-            self.keep_awake_action.blockSignals(True)
-            self.keep_awake_action.setChecked(applied)
-            self.keep_awake_action.blockSignals(False)
+            if self.keep_awake_action is not None:
+                self.keep_awake_action.blockSignals(True)
+                self.keep_awake_action.setChecked(applied)
+                self.keep_awake_action.blockSignals(False)
             QMessageBox.warning(
                 self, "Keep Awake Unavailable",
                 "The computer's sleep setting could not be changed.\n\n"
@@ -566,6 +587,7 @@ class MainWindow(QMainWindow):
         if folder:
             self.output_dir = Path(folder)
             self._refresh_folder_button()
+            self._remember("output_dir", self.output_dir)
 
     # ==================================================================
     # Processing

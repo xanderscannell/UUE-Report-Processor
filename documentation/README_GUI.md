@@ -77,6 +77,10 @@ appears on the header and the section opens itself.
   off while this window is open, for leaving the timeline up on a screen. It
   turns itself off when you close the app, and it is Windows-only
 - **Verbose logging** — detailed debug output in the log
+
+These preferences, the output folder, and the Excel/CSV choice are remembered
+between launches in `gui_preferences.json`, saved next to the app. Delete that
+file to return everything to its defaults.
 - **Open log file** / **Add desktop shortcut**
 - **About**
 

@@ -20,6 +20,7 @@ from .widgets import (
 from .building_config import BuildingColors, prefix_of
 from .building_editor import BuildingColorEditor
 from .keep_awake import KeepAwake
+from .preferences import PREFS_FILENAME, Preferences
 from .log_handler import QtLogHandler, LogPanel
 from .drop_zone import DragDropZone
 from .file_list import FileListManager
@@ -50,6 +51,8 @@ __all__ = [
     "BuildingColorEditor",
     "prefix_of",
     "KeepAwake",
+    "PREFS_FILENAME",
+    "Preferences",
     "QtLogHandler",
     "LogPanel",
     "DragDropZone",

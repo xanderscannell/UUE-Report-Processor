@@ -15,7 +15,38 @@ verification with a real PDF, and an exe rebuild.
 See [CHECKPOINTS/2026-08-05-frontend-overhaul.md](CHECKPOINTS/2026-08-05-frontend-overhaul.md)
 for the full session record, including the bugs found and how they were resolved.
 
-## Recently Completed (2026-08-04 — keep-awake setting)
+## Recently Completed (2026-08-04 — changelog extracted)
+
+- **`CHANGELOG.md` is now the release history**. The README's Version History
+  section was migrated out verbatim and replaced with a link; the README keeps
+  only a pointer and the current version number.
+- Keep-awake and persistent preferences are recorded there as **v4.1.0**.
+  Not yet tagged — `git tag v4.1.0` is still pending, and the changelog's
+  `[4.1.0]` compare link resolves once it exists.
+- v4.0.0 is dated 2026-08-04 in the changelog, matching its commit and tag; the
+  README had it as 2026-08-05, which would have put v4.1.0 before it.
+
+## Earlier Completed (2026-08-04 — persistent preferences)
+
+- **Preferences now persist** (ADR-007): new `gui_components/preferences.py`
+  writes `gui_preferences.json` beside the exe. Remembers the output folder,
+  the Excel/CSV choice, and all three Settings toggles (open timeline when
+  finished, keep computer awake, verbose logging).
+- Saved on change rather than on exit, so a crash never costs a setting.
+  `MainWindow._remember()` is the single write path; it no-ops when the value
+  did not actually change.
+- Defaults are not restated — `Preferences.defaults()` reads `GUI_DEFAULTS`.
+- Degrades safely: missing/corrupt file → defaults + a logged warning; an
+  `output_dir` whose parent is gone (unplugged drive, other machine) reverts to
+  the default; an unwritable location returns False instead of raising.
+- Only what the OS granted is remembered — a refused keep-awake persists as off.
+- **Deliverable is unchanged**: the file is created on demand, so
+  `build_release.bat` needs no edit. It is gitignored.
+- **Verified**: 56/56 tests pass (7 new `TestPreferences` cases, no Qt needed);
+  an offscreen two-window test confirms every preference survives a restart and
+  that merely restoring state does not rewrite the file.
+
+## Earlier Completed (2026-08-04 — keep-awake setting)
 
 - **Keep computer awake**: new `gui_components/keep_awake.py` (`KeepAwake`) plus a
   checkable **Settings → Keep computer awake** item. Holds
@@ -129,9 +160,9 @@ for the full session record, including the bugs found and how they were resolved
 ```
 setup_report_processor.py    [status: stable; create_gantt_rows now emits EventName]
 gui_wrapper.py               [status: rewritten — 3-stage MainWindow + Settings menu]
-gui_components/              [status: rewritten; +style.py, +widgets.py, +result_panel.py, +keep_awake.py]
+gui_components/              [status: rewritten; +style.py, +widgets.py, +result_panel.py, +keep_awake.py, +preferences.py]
 location_config.json         [status: stable, v2 format]
-test_setup_report_processor.py [status: stable, 49/49 passing]
+test_setup_report_processor.py [status: stable, 56/56 passing]
 requirements.txt             [status: updated, +PySide6 +pyqtgraph]
 UUE.ico                      [status: app icon — must ship beside exe for window icon]
 build_release.bat            [status: new — builds + zips the portable release]

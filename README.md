@@ -28,6 +28,10 @@ SetupReportProcessor/
   _internal/                  # Application dependencies
 ```
 
+`gui_preferences.json` appears alongside these the first time you change a
+setting — it remembers your output folder, chosen formats, and the Settings
+menu toggles. Delete it to go back to defaults.
+
 ### First Launch
 
 1. Extract the zip to any folder
@@ -84,6 +88,7 @@ per-run workflow:
 - **Building Colors…** — set the timeline color for each building
 - **Output Folder…** — change where schedules are written
 - **Open timeline when finished** / **Keep computer awake** / **Verbose logging** — preferences
+- Preferences, the output folder, and the chosen formats are remembered between launches
 - **Open log file** / **Add desktop shortcut**
 
 ### Location Whitelist
@@ -247,6 +252,8 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 ├── gui_wrapper.py                # GUI application (PySide6)
 ├── gui_components/               # GUI component modules
 │   ├── settings.py               #   GUI defaults and Gantt config
+│   ├── preferences.py            #   Saved preferences (gui_preferences.json)
+│   ├── keep_awake.py             #   Sleep/display inhibitor (Windows)
 │   ├── theme.py                  #   Light/dark theme helpers
 │   ├── drop_zone.py              #   Drag-and-drop zone
 │   ├── file_list.py              #   File list manager
@@ -256,9 +263,10 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 │   └── gantt_window.py           #   Embedded Gantt chart
 ├── location_config.json          # Location whitelist configuration
 ├── UUE.ico                       # Application icon
-├── test_setup_report_processor.py # Test suite (49 tests)
+├── test_setup_report_processor.py # Test suite (56 tests)
 ├── requirements.txt              # Dependencies
 ├── build_release.bat             # Builds + zips the portable release
+├── CHANGELOG.md                  # Release history
 └── README.md                     # This file
 ```
 
@@ -297,37 +305,8 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 
 ## Version History
 
-- **v4.0.0** (2026-08-05): Frontend overhaul
-  - Staged window — an inviting drop target when empty, a file queue with live per-file status while working, and a results summary when a run finishes
-  - Custom UM-Dearborn light/dark theme; the maize accent is reserved for the primary action
-  - Results screen (files processed, events found, issues, where output went) replaces the post-run alert box
-  - Processing log moved behind a **Details** disclosure that badges warning/error counts and opens itself when a run produces either
-  - One-time setup moved into a **Settings** menu in the header
-  - New **Building Colors** setting — timeline colors per building, auto-discovered from room-name prefixes; give two prefixes the same color to mark them as one building (`UC`/`RUC`)
-  - Timeline: colored by building with a legend, hover tooltips, auto-widening time axis, and fixed clipped location labels
-  - Location editor gained real checkboxes and a filter box
-  - Files can be dropped anywhere in the window
-  - The timeline is no longer a selectable output — it is always available after a run. Unticking both Excel and CSV is a timeline-only run that writes nothing to disk
-  - Fixed: progress did not advance for skipped or failed files
-- **v3.0.0** (2026-06-23): PySide6 rewrite + embedded Gantt chart
-  - Migrated the GUI from tkinter to PySide6 — crisp high-DPI rendering, native drag-and-drop, and automatic light/dark theme support
-  - Replaced the external MATLAB Gantt app with a built-in pyqtgraph chart (live current-time marker), opened via **View Gantt** or auto-launched on completion
-  - Added the **Auto-launch Gantt Chart** output option; at least one output (Excel/CSV/Gantt) is now required to process
-  - Removed the MATLAB CSV output and the `--matlab-*` CLI flags
-  - Added `build_release.bat` for one-step portable-release builds
-- **v2.0.0** (2026-02-11): GUI Release
-  - Desktop GUI with drag-and-drop file processing
-  - Location whitelist editor (add/remove/toggle locations)
-  - Portable `.exe` distribution via PyInstaller
-  - Desktop shortcut creation with custom icon
-  - Location config v2 format (replaces separate whitelist/blacklist)
-  - 49 passing tests
-- **v1.0.0** (2026-01-07): Initial production release
-  - PDF text extraction
-  - Location-based filtering
-  - Chronological sorting
-  - Excel/CSV export
-  - Comprehensive logging
+See [CHANGELOG.md](CHANGELOG.md) for the full release history.
+The current release is **v4.1.0**.
 
 ## License
 

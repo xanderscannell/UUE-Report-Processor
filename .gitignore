@@ -34,6 +34,9 @@ ENV/
 *.swo
 *~
 
+# Interface preferences (written by the app at runtime, per-user)
+gui_preferences.json
+
 # Output files (if you want to ignore them in git)
 *.xlsx
 *.csv

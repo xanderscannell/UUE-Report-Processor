@@ -255,3 +255,66 @@ which is also how a user resolves any future rename without a code change.
 `setup_report_processor.py:create_gantt_rows`
 
 ---
+
+## ADR-007: Persist interface preferences in their own file
+
+**Date**: 2026-08-04
+**Status**: Accepted
+
+**Context**:
+Every choice in the Settings menu — output folder, Excel/CSV formats, open the
+timeline when finished, verbose logging, and the new keep-awake toggle — reset
+to its default on every launch. For a tool someone opens daily to process the
+same reports into the same folder, that is a small chore repeated forever.
+
+`location_config.json` was the obvious place to put them: it already carries two
+independent blocks (`locations` and `buildings`, ADR-006), and a third would have
+been additive in the same way.
+
+**Decision**:
+Persist them in a **separate** `gui_preferences.json`, written beside the
+executable, and read/written by `gui_components/preferences.py`.
+
+- Defaults are not restated — `Preferences.defaults()` reads `GUI_DEFAULTS` from
+  `settings.py`, which stays the single source of truth
+- Saved on change, not on exit, so a crash never costs a setting
+- A missing, malformed, or partial file falls back to defaults and logs; it is
+  treated as "first run", never as an error
+- An `output_dir` whose parent no longer exists (another machine, an unplugged
+  drive) falls back to the default rather than failing at the end of a run
+- Only what the OS actually granted is remembered: a refused keep-awake request
+  persists as off, so a machine that cannot honour it does not keep retrying
+
+**Rationale**:
+- `location_config.json` is *authored* configuration — it ships with the app,
+  users hand-edit it, and it gets replaced wholesale between deployments.
+  `gui_preferences.json` is *runtime state* the app rewrites whenever a toggle
+  moves. Mixing the two means every preference change rewrites the locations
+  file, putting hand edits in the blast radius of a stray click
+- Both location and building editors already carry "preserve the other block"
+  logic; a third writer with a different lifecycle would compound that
+- The preferences file is created on demand, so it needs no entry in
+  `build_release.bat` and nothing changes about the deliverable
+
+**Consequences**:
+- (+) A user configures the app once; the daily path is drag → Process
+- (+) Deleting one file resets the interface without touching venue config
+- (-) A second config file to explain in the docs, and one more thing that can
+  go stale on the user's disk
+- (-) Preferences do not travel with `location_config.json` when it is copied
+  between machines — deliberate, since output paths are machine-specific
+- `gui_preferences.json` is gitignored: it is per-user runtime state
+
+**Alternatives considered**:
+- A `preferences` block in `location_config.json`: rejected above — coupling
+  runtime state to authored config
+- `QSettings` (the Qt-native choice, registry-backed on Windows): rejected
+  because the app is distributed as a portable folder. Settings living in the
+  registry would not travel with the folder, would not be inspectable next to
+  the exe, and could not be reset by deleting a file
+- Saving on window close: loses everything if the app is killed, and would have
+  needed the same `closeEvent` to also be crash-proof
+
+**Relevant code**: `gui_components/preferences.py`, `gui_wrapper.py`
+(`_remember`, `_set_verbose`, `_set_gantt_autolaunch`, `_set_keep_awake`,
+`_browse_output_folder`), `gui_components/settings.py`
