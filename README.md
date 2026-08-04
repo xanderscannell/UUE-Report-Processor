@@ -9,7 +9,8 @@ A Python application that extracts event schedules from Daily Setup Report PDFs 
 - **Interactive Gantt Chart**: Built-in timeline view of the day's events with a live current-time marker
 - **Smart Location Filtering**: Configurable whitelist of venue locations
 - **Chronological Sorting**: Automatically orders events by setup time
-- **GUI Interface**: PySide6 desktop app — drag-and-drop, batch processing, crisp on high-DPI/scaled displays, follows system light/dark theme
+- **GUI Interface**: PySide6 desktop app — staged drag-and-drop workflow, live per-file
+  status, results summary, custom light/dark theme, crisp on high-DPI/scaled displays
 - **Location Editor**: Built-in GUI for managing the location whitelist
 - **Desktop Shortcut**: One-click shortcut creation from the app
 - **Portable Distribution**: Runs as a standalone `.exe` with no Python required
@@ -31,35 +32,96 @@ SetupReportProcessor/
 
 1. Extract the zip to any folder
 2. Double-click `SetupReportProcessor.exe`
-3. (Optional) Click **Add Desktop Shortcut** for quick access
+3. (Optional) Choose **Settings → Add desktop shortcut** for quick access
 
 ## GUI Usage
 
-The GUI provides drag-and-drop PDF processing:
+The window walks you through one step at a time — it starts as a drop target,
+becomes a work queue once files are added, and ends on a summary of what was
+produced.
 
-1. **Add Files**: Drag PDF files onto the drop zone, or click to browse
-2. **Select Output**: Choose Excel, CSV, and/or **Auto-launch Gantt Chart** (at least one output is required)
-3. **Process**: Click **Process Files** to generate schedules
-4. **View Output**: Click **Open Output Folder** for the files, or **View Gantt** for the timeline chart
+1. **Add files**: Drop PDFs anywhere in the window, or click the drop zone to browse
+2. **Choose output**: Toggle **Excel .xlsx** and/or **CSV .csv** — or leave both off
+   for a timeline-only run (see below)
+3. **Process**: Click **Process N files** — each file shows live status as it runs
+4. **Finish**: The results screen reports files done, events found, and issues, with
+   **View Timeline** and **Open Output Folder** right there
 
-### Gantt Chart
+Anything that went wrong is summarized on a badge next to **Details** at the bottom
+of the window; expand it for the full processing log.
 
-Click **View Gantt** (or enable **Auto-launch Gantt Chart** before processing) to open the event timeline:
+### Timeline-only runs
+
+If all you want is to look at the day's schedule, **untick both Excel and CSV**.
+The button changes to **Preview N files** and the run produces no files at all —
+not even an output folder. You still get the full results summary and the
+**View Timeline** button.
+
+Handy for checking a report before committing to a spreadsheet, or for glancing
+at the day without leaving files behind.
+
+### Event Timeline
+
+Click **View Timeline** on the results screen to open the day's schedule as a Gantt chart:
 
 - One horizontal bar per event, spanning setup time to closing time
-- Time-of-day axis from 6 AM to midnight; events labeled by location
-- A live red line marks the current time, refreshing every minute
+- Bars are colored by building, with a legend; every bar is also labeled by
+  location on the left. Colors are configurable — see **Building Colors** below
+- Time-of-day axis covering 6 AM to midnight, widened automatically if events fall outside it
+- A dashed line marks the current time, refreshing every minute
+- Hover a bar for the event name, location, and exact times
 - Process multiple PDFs to get a report selector for switching between days
+
+To have it open automatically after every run, enable **Settings → Open timeline
+when finished**.
+
+### Settings menu
+
+The **Settings** button in the header holds everything that isn't part of the
+per-run workflow:
+
+- **Location Whitelist…** — manage which venues are included
+- **Building Colors…** — set the timeline color for each building
+- **Output Folder…** — change where schedules are written
+- **Open timeline when finished** / **Verbose logging** — preferences
+- **Open log file** / **Add desktop shortcut**
 
 ### Location Whitelist
 
-Click **Location Whitelist...** to manage which venue locations are included in the output:
+Open **Settings → Location Whitelist…** to manage which venue locations are included:
 
-- **Add**: Create new location entries with custom names
-- **Toggle**: Enable/disable locations without removing them
-- **Remove**: Delete locations you no longer need
+- **Check / uncheck** a location to include or exclude it without deleting it
+- **Filter** the list by typing, useful once the list grows
+- **Add location** / **Remove selected** to change the list itself
 
-Disabled locations are filtered out during processing. Changes are saved to `location_config.json`.
+Unchecked locations are filtered out during processing. Changes are saved to
+`location_config.json` when you click **Save changes**.
+
+### Building Colors
+
+Timeline bars are colored by the **building prefix** in the room name — `UC 1225`
+is `UC`, `RUC 1171 (Lake Erie)` is `RUC`, `FCS 180` is `FCS`.
+
+Open **Settings → Building Colors…** to change them. The list fills itself in: any
+prefix that shows up in your whitelist or in a processed report is added
+automatically with a color assigned, so a new campus building (CASL, ELB, …) works
+with no update to the app. You can also rename a building to something friendlier
+than its prefix — that name is what appears in the timeline legend.
+
+**Two prefixes that mean the same building? Give them the same color.** `UC` and
+`RUC` both refer to the Renick University Center — the building was renamed but
+existing rooms kept their old names — so they ship sharing one color, and the
+timeline shows them as a single legend entry. The same trick handles any future
+rename.
+
+Colors come from a fixed set chosen so bars stay distinguishable, including for
+colorblind viewers, on both light and dark backgrounds. Options past the first
+three are marked with `*`: once four or more buildings are on screen at once,
+some pairs get hard to tell apart by color, and the location label on each bar is
+what keeps them straight.
+
+Assignments are saved to `location_config.json`, so a building keeps its color
+from one report to the next.
 
 ## CLI Usage (Cross-Platform)
 
@@ -222,8 +284,8 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 - The PDF format may have changed
 
 ### Missing events in output
-- Check the log file for "Skipping event" or "not in whitelist" messages
-- Open the Location Whitelist editor and verify the location is enabled
+- Expand **Details** at the bottom of the window, or check the log file, for "Skipping event" or "not in whitelist" messages
+- Open **Settings → Location Whitelist…** and verify the location is enabled
 
 ### Desktop shortcut opens wrong application
 - Delete the old shortcut and recreate it from the GUI
@@ -235,6 +297,18 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 
 ## Version History
 
+- **v4.0.0** (2026-08-05): Frontend overhaul
+  - Staged window — an inviting drop target when empty, a file queue with live per-file status while working, and a results summary when a run finishes
+  - Custom UM-Dearborn light/dark theme; the maize accent is reserved for the primary action
+  - Results screen (files processed, events found, issues, where output went) replaces the post-run alert box
+  - Processing log moved behind a **Details** disclosure that badges warning/error counts and opens itself when a run produces either
+  - One-time setup moved into a **Settings** menu in the header
+  - New **Building Colors** setting — timeline colors per building, auto-discovered from room-name prefixes; give two prefixes the same color to mark them as one building (`UC`/`RUC`)
+  - Timeline: colored by building with a legend, hover tooltips, auto-widening time axis, and fixed clipped location labels
+  - Location editor gained real checkboxes and a filter box
+  - Files can be dropped anywhere in the window
+  - The timeline is no longer a selectable output — it is always available after a run. Unticking both Excel and CSV is a timeline-only run that writes nothing to disk
+  - Fixed: progress did not advance for skipped or failed files
 - **v3.0.0** (2026-06-23): PySide6 rewrite + embedded Gantt chart
   - Migrated the GUI from tkinter to PySide6 — crisp high-DPI rendering, native drag-and-drop, and automatic light/dark theme support
   - Replaced the external MATLAB Gantt app with a built-in pyqtgraph chart (live current-time marker), opened via **View Gantt** or auto-launched on completion

@@ -49,7 +49,10 @@ PDF File ──► SetupReportProcessor ──► Excel/CSV Output
 
 **Notes**:
 - `ProcessorWorker` is a `QThread`; communicates with the GUI via Qt signals
-  (delivered on the GUI thread automatically — no manual queue polling)
+  (delivered on the GUI thread automatically — no manual queue polling). It
+  reports per-file outcomes (`file_started`/`file_done`) plus a run summary dict
+  on `finished_all`, which drives the queue status glyphs and the results screen
+- Files can be dropped anywhere in the window, not just on the drop zone
 - High-DPI crisp rendering (Qt6 per-monitor scaling, `PassThrough` rounding policy)
 - Native Qt drag-and-drop — the old `tkinterdnd2` dependency is gone
 - See [DECISIONS.md](DECISIONS.md) ADR-004 for the tkinter→PySide6 migration
@@ -60,13 +63,46 @@ PDF File ──► SetupReportProcessor ──► Excel/CSV Output
 
 **Purpose**: Modular, reusable UI widgets (PySide6)
 **Key files**:
-- `gui_components/settings.py` — colors, defaults, window + Gantt config
-- `gui_components/drop_zone.py` — native drag-and-drop `QFrame`
-- `gui_components/file_list.py` — file queue (`QListWidget`)
+- `gui_components/style.py` — **design system**: color tokens, spacing/type scale,
+  `build_stylesheet()`, `apply_theme()`; owns the active light/dark scheme
+- `gui_components/theme.py` — OS color-scheme detection (`is_dark_mode`)
+- `gui_components/widgets.py` — shared primitives: `Card`, `HeaderBar`,
+  `CollapsibleSection`, painted icons (`DropIcon`, `OutcomeIcon`, `StatusGlyph`)
+- `gui_components/settings.py` — behavioral defaults, dimensions, Gantt config
+- `gui_components/drop_zone.py` — native drag-and-drop `QFrame` (hero + compact)
+- `gui_components/file_list.py` — file queue of `FileRow` cards with live status
+- `gui_components/result_panel.py` — post-run summary screen
 - `gui_components/log_handler.py` — `QtLogHandler` (logging→Qt signal) + `LogPanel`
 - `gui_components/location_editor.py` — whitelist editor `QDialog`
+- `gui_components/building_config.py` — building prefix → label + palette slot;
+  discovery, auto-assignment, and persistence (see ADR-006)
+- `gui_components/building_editor.py` — Building Colors `QDialog`
 - `gui_components/worker.py` — `ProcessorWorker` background `QThread`
-- `gui_components/gantt_window.py` — embedded pyqtgraph Gantt chart (replaces MATLAB)
+- `gui_components/gantt_window.py` — embedded pyqtgraph event timeline
+
+**Theming rule**: custom-painted widgets must read colors from `style.tokens()`,
+which returns the scheme `apply_theme()` selected. Asking the OS directly
+(`is_dark_mode()`) inside a widget breaks any forced light/dark run.
+
+**`location_config.json` holds two independent blocks**: `locations` (read by
+both the processor and the GUI) and `buildings` (GUI only — timeline colors). The
+processor reads only `version` and `locations`, so `buildings` is additive and the
+file stays at version 2. Both editors preserve the other's block when saving.
+
+---
+
+### GUI Stages
+
+The main window is a `QStackedWidget` over three stages (see ADR-005):
+
+| Stage | Shown when | Contents |
+|-------|-----------|----------|
+| `STAGE_EMPTY` | queue is empty | hero drop zone + 3-step explainer |
+| `STAGE_WORK` | files queued or running | compact drop strip, file cards, output toggles, primary CTA / progress |
+| `STAGE_DONE` | a run finished | `ResultPanel` — metrics and follow-up actions |
+
+A persistent "Details" disclosure (collapsed log with a warning/error badge) sits
+below the stack in every stage. One-time setup lives in the header Settings menu.
 
 ---
 

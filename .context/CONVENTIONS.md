@@ -28,13 +28,20 @@
 ```
 ./
   setup_report_processor.py   # Core processor (single file)
-  gui_wrapper.py              # GUI entry point
+  gui_wrapper.py              # GUI entry point (MainWindow, stage machine)
   gui_components/
     __init__.py               # Public exports
-    settings.py               # Config constants
-    drop_zone.py              # Drag-drop widget
+    style.py                  # Design tokens + application stylesheet
+    theme.py                  # OS color-scheme detection
+    widgets.py                # Shared primitives (Card, HeaderBar, icons…)
+    settings.py               # Behavioral defaults, dimensions, Gantt config
+    drop_zone.py              # Drag-drop widget (hero + compact)
     file_list.py              # File queue widget
+    result_panel.py           # Post-run summary screen
     log_handler.py            # Logging widget
+    location_editor.py        # Whitelist editor dialog
+    worker.py                 # Background QThread
+    gantt_window.py           # Event timeline
   test_setup_report_processor.py  # All tests in one file
 ```
 
@@ -60,7 +67,8 @@ def parse_time(self, time_str: str) -> Optional[datetime]:
 
 - Fail fast in `__init__` with `FileNotFoundError` / `ValueError`
 - Try-except with logging in processing methods
-- Graceful degradation for optional features (e.g., tkinterdnd2)
+- Graceful degradation for optional features and missing config (e.g. a missing
+  `location_config.json` falls back to built-in defaults)
 - Never silently swallow exceptions; always log at WARNING or ERROR level
 
 ## Logging
@@ -95,4 +103,19 @@ def parse_time(self, time_str: str) -> Optional[datetime]:
 
 - Location filters defined as class-level constants (not in external config)
 - Regex patterns stored as class constants when reused
-- GUI defaults in `gui_components/settings.py`
+- GUI behavioral defaults in `gui_components/settings.py`
+
+## GUI Styling
+
+- **Never hard-code a color in a widget.** Read it from `style.tokens()` so both
+  schemes stay in sync; add a new token if none fits.
+- **Never call `is_dark_mode()` from a widget.** `tokens()` returns the scheme
+  `apply_theme()` actually applied, which is what the widget must match.
+- Prefer the shared stylesheet (an `objectName` or a `variant`/`role`/`card`
+  dynamic property) over per-widget `setStyleSheet`, so theme switches take
+  effect without touching each widget.
+- Button variants: `primary` (maize, exactly one per screen), `secondary`
+  (brand navy), `ghost`, `quiet`, `icon`, `toggle`.
+- Typography roles on `QLabel`: `display`, `title`, `subtitle`, `muted`,
+  `faint`, `eyebrow`, `metric` — use `widgets.label(text, role)`.
+- Spacing comes from `style.SPACE`; corner radii from `style.RADIUS`.

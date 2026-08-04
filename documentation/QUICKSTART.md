@@ -3,9 +3,13 @@
 
 ### Installation (5 minutes)
 
+> Just want the app? Grab `SetupReportProcessor.zip`, extract, and double-click
+> the `.exe` — no Python needed. See [README_GUI.md](README_GUI.md).
+> The steps below are for running from source or using the command line.
+
 1. **Install Python** (if not already installed)
    - Download from https://python.org
-   - Version 3.7 or higher required
+   - Version 3.9 or higher required (PySide6 needs it)
    - Make sure to check "Add Python to PATH" during installation
 
 2. **Set up the project**
@@ -29,6 +33,17 @@
    ```
 
 ### Basic Usage
+
+**Launch the desktop app:**
+```bash
+# Windows:
+gui_wrapper.bat
+
+# Any platform, with the venv activated:
+python gui_wrapper.py
+```
+Drop PDFs in, pick Excel and/or CSV, click Process. Full walkthrough in
+[README_GUI.md](README_GUI.md).
 
 **Process a single PDF:**
 ```bash
@@ -58,7 +73,8 @@ batch_process.bat
 ### What it Does
 
 1. Extracts events from Daily Setup Report PDFs
-2. Filters events by location (UC, RUC, FCS Michigan, FCS 180, FCS Dining Rm D)
+2. Filters events by location, using the whitelist in `location_config.json`
+   (editable in the app under Settings → Location Whitelist…)
 3. Creates two entries per event:
    - Setup Ready By time
    - Closing time
@@ -71,8 +87,6 @@ batch_process.bat
 |------------|----------|----------|------|
 | Book Club Meeting | UC 1227 | Setup Ready By | 11:30 AM |
 | Book Club Meeting | UC 1227 | Closing | 2:00 PM |
-
-See `example_output.xlsx` for a complete example!
 
 ### Troubleshooting
 
@@ -93,13 +107,14 @@ pip install -r requirements.txt
 ### Files Included
 
 - `setup_report_processor.py` - Main script
+- `gui_wrapper.py` / `gui_wrapper.bat` - Desktop app and its launcher
+- `location_config.json` - Location whitelist and building colors
 - `requirements.txt` - Python dependencies
 - `README.md` - Complete documentation
+- `documentation/README_GUI.md` - Desktop app guide
 - `test_installation.py` - Test your setup
 - `batch_process.bat` - Windows batch processor
 - `batch_process.sh` - Mac/Linux batch processor
-- `example_output.xlsx` - Sample output
-- `example_output.csv` - Sample output
 
 ---
 

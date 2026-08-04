@@ -1,15 +1,60 @@
 # Project Status
 
-**Last updated**: 2026-06-23
+**Last updated**: 2026-08-05
 
 ## Current Position
 
 **Phase**: GUI Modernization
-**Subphase**: tkinter → PySide6 migration + MATLAB Gantt replacement (ADR-004)
-**Progress**: GUI rewritten in PySide6; embedded pyqtgraph Gantt replaces MATLAB;
-all 49 tests pass; headless smoke test passes. Pending: on-display verification + exe rebuild.
+**Subphase**: Frontend overhaul — staged UI + custom design system (ADR-005, ADR-006)
+**Progress**: Window restructured into empty → workspace → results stages with a
+UM-Dearborn themed design system. All 49 tests pass; end-to-end GUI smoke test
+passes (worker thread → per-file status → results screen); every screen reviewed
+rendered in both light and dark. Docs are current. Pending: on-display
+verification with a real PDF, and an exe rebuild.
 
-## Recently Completed (2026-06-23 — PySide6 migration)
+See [CHECKPOINTS/2026-08-05-frontend-overhaul.md](CHECKPOINTS/2026-08-05-frontend-overhaul.md)
+for the full session record, including the bugs found and how they were resolved.
+
+## Recently Completed (2026-08-05 — frontend overhaul)
+
+- **Design system**: new `gui_components/style.py` — color tokens (light + dark),
+  spacing/type scale, `build_stylesheet()`, `apply_theme()` (Fusion + app-owned
+  palette). Michigan Blue brand surfaces, Maize reserved for the primary action.
+- **Staged window**: `gui_wrapper.py` is a 3-stage `QStackedWidget` —
+  hero drop target → file queue + output toggles + one CTA → results summary.
+- **Shared primitives**: new `gui_components/widgets.py` (`Card`, `HeaderBar`,
+  `CollapsibleSection`, `DropIcon`/`OutcomeIcon`/`StatusGlyph`/`FileGlyph`,
+  `label()`/`pill()` helpers).
+- **Results screen**: new `gui_components/result_panel.py` replaces the post-run
+  `QMessageBox` — outcome icon, files/events/issues metrics, output location,
+  and View Timeline / Open Output Folder / Process more.
+- **File queue rewrite**: per-file cards with their own remove button and live
+  status (queued / spinner / done / failed / skipped) plus a result detail.
+- **Log demoted**: behind a persistent "Details" disclosure that badges
+  warning/error counts and auto-expands when a run produces either.
+- **Settings menu**: location whitelist, output folder, preferences, log file,
+  and desktop shortcut moved out of the main surface into the header menu.
+- **Location editor**: real checkboxes (with a generated tick glyph), a filter
+  box, grayed-out disabled entries, and an enabled/total counter.
+- **Timeline rewrite**: bars colored by building with a legend, fixed the clipped
+  Y-axis location labels, auto-widening time axis, hover tooltips, "now" marker.
+- **Building Colors setting** (ADR-006): new `building_config.py` +
+  `building_editor.py`. Buildings are discovered from room-name prefixes in the
+  enabled whitelist and processed reports, auto-assigned a validated palette slot,
+  and persisted in `location_config.json` under an additive `buildings` key.
+  Giving two prefixes the same color is how "UC and RUC are one building" is
+  expressed — the legend merges same-colored entries. New campus buildings
+  (CASL, ELB, …) now need no code change.
+- **Worker signals**: `file_started` / `file_done` / `finished_all(cancelled, summary)`;
+  progress now advances for skipped and failed files too (previously it did not).
+- **Timeline-only runs**: unticking both Excel and CSV is a valid mode rather than
+  a validation error — the CTA becomes "Preview N files" and the run writes
+  nothing, not even the output folder. Verified end to end.
+- **Processor**: `create_gantt_rows()` also emits `EventName` (tooltip source).
+- **Verified**: 49/49 tests pass; GUI smoke test drives a real run to the results
+  screen; light and dark renders reviewed for every stage.
+
+## Earlier Completed (2026-06-23 — PySide6 migration)
 
 - **GUI rewritten in PySide6**: `gui_wrapper.py` is now a `QMainWindow`; all
   `gui_components/` widgets reimplemented in Qt (drop_zone, file_list, location_editor,
@@ -42,27 +87,32 @@ all 49 tests pass; headless smoke test passes. Pending: on-display verification 
 
 ## In Progress
 
-- [ ] Verify the PySide6 app on a real (scaled) display — confirm crispness and Gantt visuals
+- [ ] Verify the overhauled UI on a real (scaled) display with a real Daily Setup Report PDF
 - [ ] Rebuild the portable exe with the new Qt/pyqtgraph deps
-- [ ] Update README + GUI docs for the PySide6 UI and embedded Gantt
+- [x] Refresh `documentation/README_GUI.md` and `QUICKSTART.md` for the staged UI
+- [x] Update the top-level README for the staged UI, Settings menu, and timeline
+- [x] Rewrite `.context/SETUP.md` (stale `requirements-gui.txt`, tkinterdnd2, `input/`)
 - [x] Remove obsolete MATLAB artifacts (`GanttChartApp.mlapp`/`.txt`) and code references
 
 ## Next Up
 
-1. Run `python gui_wrapper.py`, process a real PDF, open "View Gantt", check DPI crispness
+1. Run `python gui_wrapper.py`, process a real PDF end to end, open **View Timeline**,
+   and confirm crispness on a scaled display in both light and dark mode
 2. Rebuild exe (Qt needs no special flags; PyInstaller ships PySide6/pyqtgraph hooks):
    `pyinstaller --windowed --name SetupReportProcessor --icon=UUE.ico gui_wrapper.py`
    — confirm `UUE.ico` lands next to the exe (used for the window icon at runtime)
 3. Copy `location_config.json` into `dist/SetupReportProcessor/`
-4. Smoke-test the exe (window + Gantt), then zip for distribution
-5. Update README/documentation for the new UI
+4. Smoke-test the exe (window + timeline), then zip for distribution
+5. Consider tests for GUI-side logic that now carries real behavior —
+   `BuildingColors` assignment/persistence and dry-run gating are currently only
+   covered by ad-hoc scripts, not the suite
 
 ## Active Files and Modules
 
 ```
-setup_report_processor.py    [status: stable, MATLAB code removed, create_gantt_rows]
-gui_wrapper.py               [status: rewritten in PySide6 (MainWindow)]
-gui_components/              [status: rewritten in PySide6; +worker.py, +gantt_window.py]
+setup_report_processor.py    [status: stable; create_gantt_rows now emits EventName]
+gui_wrapper.py               [status: rewritten — 3-stage MainWindow + Settings menu]
+gui_components/              [status: rewritten; +style.py, +widgets.py, +result_panel.py]
 location_config.json         [status: stable, v2 format]
 test_setup_report_processor.py [status: stable, 49/49 passing]
 requirements.txt             [status: updated, +PySide6 +pyqtgraph]
@@ -72,6 +122,13 @@ build_release.bat            [status: new — builds + zips the portable release
 
 ## Recent Decisions
 
+- **2026-08-05**: Staged single-page GUI + app-owned light/dark theme (ADR-005)
+- **2026-08-05**: Gantt bars colored by building, discovered from room-name
+  prefixes and configured by the user, not hardcoded (ADR-006)
+- **2026-08-05**: `location_config.json` gained an additive `buildings` key;
+  still version 2, and the processor ignores it
+- **2026-08-05**: Timeline is no longer a selectable "output" — it is always
+  available after a run, so Process requires Excel or CSV
 - **2026-02-11**: Switched to `--onedir` PyInstaller build to avoid slow `--onefile` startup extraction
 - **2026-02-11**: Desktop shortcut uses exe's embedded icon (`$s.IconLocation = "$target,0"`) instead of requiring separate .ico in deliverable
 - **2026-02-11**: Window icon uses `self.root.iconbitmap(sys.executable)` when frozen to read embedded icon
@@ -94,3 +151,8 @@ cp location_config.json dist/SetupReportProcessor/
 - `_match_whitelist_location()` uses longest-first `startswith` matching (no more blacklist check)
 - Deliverable = `SetupReportProcessor.exe` + `location_config.json` + `_internal/` folder, all inside one zipped folder
 - `BASE_DIR` = `Path(sys.executable).parent` when frozen, `Path(__file__).parent` otherwise
+- GUI colors come from `gui_components/style.py` — never hard-code a hex in a
+  widget, and never call `is_dark_mode()` from a widget (use `style.tokens()`)
+- To review the UI without a real PDF: build a `MainWindow`, call
+  `_on_files_added([Path(...)])` with any paths (they need not exist), drive
+  `_show_running()` / `result_panel.set_results()`, and `widget.grab().save(...)`

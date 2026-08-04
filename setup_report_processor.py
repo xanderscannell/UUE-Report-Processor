@@ -553,7 +553,7 @@ class SetupReportProcessor:
     def create_gantt_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
         Create single-row events for the Gantt chart.
-        Each event becomes: Location, StartTime (24h), EndTime (24h)
+        Each event becomes: EventName, Location, StartTime (24h), EndTime (24h)
 
         Args:
             events: List of event dictionaries with setup_time and closing_time
@@ -570,7 +570,8 @@ class SetupReportProcessor:
             ... }]
             >>> rows = processor.create_gantt_rows(events)
             >>> rows[0]
-            {'Location': 'UC 1227', 'StartTime': '01:30', 'EndTime': '14:00'}
+            {'EventName': 'Test Event', 'Location': 'UC 1227',
+             'StartTime': '01:30', 'EndTime': '14:00'}
         """
         logger.info("Creating Gantt event rows...")
         rows = []
@@ -590,6 +591,7 @@ class SetupReportProcessor:
                 continue
 
             rows.append({
+                "EventName": event.get("event_name", ""),
                 "Location": event["location"],
                 "StartTime": start_time_24h,
                 "EndTime": end_time_24h

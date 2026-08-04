@@ -53,9 +53,10 @@ Before the session ends:
 
 ## Current Focus
 
-**Phase**: Maintenance & Bug Fixes
-**Working on**: Fixing PDF parsing edge cases (time extraction, location filtering)
-**Key constraint**: Must not break existing regex-based parsing for working PDF formats
+**Phase**: GUI Modernization — frontend overhaul (ADR-005, ADR-006)
+**Working on**: Verifying the staged UI on a real display, then rebuilding the portable exe
+**Key constraint**: Must not break existing regex-based parsing for working PDF formats.
+GUI colors come from `gui_components/style.py` — never hard-code a hex in a widget.
 
 ## Reference
 

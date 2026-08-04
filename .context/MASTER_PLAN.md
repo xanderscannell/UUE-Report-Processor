@@ -48,8 +48,8 @@ Automate the extraction of event schedules from Daily Setup Report PDFs into sor
 **Goal**: Make the tool accessible to non-technical users
 
 ### 2.1 GUI Application
-- [x] Tkinter-based interface
-- [x] Drag-and-drop file input (with tkinterdnd2 fallback)
+- [x] Desktop interface (originally Tkinter; migrated to PySide6 — see ADR-004)
+- [x] Drag-and-drop file input (native Qt since the migration)
 - [x] Background processing thread
 - [x] Real-time log output in GUI
 - [x] Batch file processing queue
@@ -80,7 +80,7 @@ Automate the extraction of event schedules from Daily Setup Report PDFs into sor
 - [ ] Test with edge case PDFs
 
 ### Phase 3 Milestones
-- [ ] Zero parsing errors across all input PDFs in `input/`
+- [ ] Zero parsing errors across the collected historical Daily Setup Report PDFs
 - [ ] Regression tests cover all previously-fixed bugs
 
 ---

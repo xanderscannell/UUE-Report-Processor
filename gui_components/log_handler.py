@@ -14,7 +14,7 @@ import logging
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QPlainTextEdit
 
-from .theme import is_dark_mode
+from .style import tokens
 
 
 class QtLogHandler(logging.Handler, QObject):
@@ -35,21 +35,35 @@ class QtLogHandler(logging.Handler, QObject):
 
 
 class LogPanel(QPlainTextEdit):
-    """Read-only, auto-scrolling, color-coded log display."""
+    """
+    Read-only, auto-scrolling, color-coded log display.
+
+    Tracks how many warnings and errors have been seen so the surrounding UI
+    can surface a badge without the panel being open.
+    """
+
+    counts_changed = Signal(int, int)  # (warnings, errors)
 
     def __init__(self, max_lines: int = 1000, parent=None):
         super().__init__(parent)
+        self.setObjectName("LogPanel")
         self.max_lines = max_lines
+        self.warning_count = 0
+        self.error_count = 0
         self.setReadOnly(True)
         self.setMaximumBlockCount(max_lines)
         self.setLineWrapMode(QPlainTextEdit.WidgetWidth)
-        # Follow the system theme for background/default text.
-        self.setStyleSheet(
-            "QPlainTextEdit { background: palette(base); color: palette(text); }"
-        )
+        self.setPlaceholderText("Processing details will appear here.")
 
     def append_record(self, message: str, level: str):
         """Append one colored line (connected to QtLogHandler.message)."""
+        if level == "WARNING":
+            self.warning_count += 1
+            self.counts_changed.emit(self.warning_count, self.error_count)
+        elif level in ("ERROR", "CRITICAL"):
+            self.error_count += 1
+            self.counts_changed.emit(self.warning_count, self.error_count)
+
         safe = html.escape(message)
         color = self._level_color(level)
         if color:
@@ -58,7 +72,6 @@ class LogPanel(QPlainTextEdit):
                 f'<span style="color:{color}; font-weight:{weight};">{safe}</span>'
             )
         else:
-            # INFO: inherit the palette text color so it reads on light or dark.
             self.appendHtml(safe)
         bar = self.verticalScrollBar()
         bar.setValue(bar.maximum())
@@ -66,15 +79,18 @@ class LogPanel(QPlainTextEdit):
     @staticmethod
     def _level_color(level: str):
         """Theme-aware color per level, or None to use the default text color."""
-        dark = is_dark_mode()
+        t = tokens()
         if level in ("ERROR", "CRITICAL"):
-            return "#ef5350" if dark else "#c62828"
+            return t["error"]
         if level == "WARNING":
-            return "#ffb74d" if dark else "#e65100"
+            return t["warning"]
         if level == "DEBUG":
-            return "#9e9e9e" if dark else "#6d6d6d"
-        return None  # INFO
+            return t["text_faint"]
+        return None  # INFO inherits the panel's own color
 
     def clear_log(self):
-        """Clear all text from the panel."""
+        """Clear all text and reset the warning/error counters."""
         self.clear()
+        self.warning_count = 0
+        self.error_count = 0
+        self.counts_changed.emit(0, 0)

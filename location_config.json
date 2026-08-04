@@ -106,5 +106,19 @@
             "name": "UC A-Special Notice",
             "enabled": true
         }
-    ]
+    ],
+    "buildings": {
+        "UC": {
+            "label": "Renick University Center",
+            "color": 0
+        },
+        "RUC": {
+            "label": "Renick University Center",
+            "color": 0
+        },
+        "FCS": {
+            "label": "Fairlane Center South",
+            "color": 1
+        }
+    }
 }
