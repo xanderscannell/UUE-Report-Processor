@@ -72,6 +72,8 @@ PDF File ──► SetupReportProcessor ──► Excel/CSV Output
 - `gui_components/drop_zone.py` — native drag-and-drop `QFrame` (hero + compact)
 - `gui_components/file_list.py` — file queue of `FileRow` cards with live status
 - `gui_components/result_panel.py` — post-run summary screen
+- `gui_components/keep_awake.py` — `KeepAwake`, an optional OS sleep/display
+  inhibitor (Windows `SetThreadExecutionState`); a no-op elsewhere
 - `gui_components/log_handler.py` — `QtLogHandler` (logging→Qt signal) + `LogPanel`
 - `gui_components/location_editor.py` — whitelist editor `QDialog`
 - `gui_components/building_config.py` — building prefix → label + palette slot;

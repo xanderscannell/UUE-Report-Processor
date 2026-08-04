@@ -22,6 +22,7 @@ GUI_DEFAULTS = {
     "csv_enabled": False,
     "gantt_autolaunch": False,
     "verbose_logging": False,
+    "keep_awake": False,
     "max_log_lines": 1000,
 }
 

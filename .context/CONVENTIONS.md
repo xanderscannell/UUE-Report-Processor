@@ -38,6 +38,7 @@
     drop_zone.py              # Drag-drop widget (hero + compact)
     file_list.py              # File queue widget
     result_panel.py           # Post-run summary screen
+    keep_awake.py             # OS sleep/display inhibitor (Windows only)
     log_handler.py            # Logging widget
     location_editor.py        # Whitelist editor dialog
     worker.py                 # Background QThread

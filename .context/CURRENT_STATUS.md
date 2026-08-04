@@ -1,6 +1,6 @@
 # Project Status
 
-**Last updated**: 2026-08-05
+**Last updated**: 2026-08-04
 
 ## Current Position
 
@@ -15,7 +15,24 @@ verification with a real PDF, and an exe rebuild.
 See [CHECKPOINTS/2026-08-05-frontend-overhaul.md](CHECKPOINTS/2026-08-05-frontend-overhaul.md)
 for the full session record, including the bugs found and how they were resolved.
 
-## Recently Completed (2026-08-05 — frontend overhaul)
+## Recently Completed (2026-08-04 — keep-awake setting)
+
+- **Keep computer awake**: new `gui_components/keep_awake.py` (`KeepAwake`) plus a
+  checkable **Settings → Keep computer awake** item. Holds
+  `ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED` via
+  `SetThreadExecutionState` so the machine and the display stay on while the
+  window is open — meant for leaving the timeline up on a screen.
+- Released in a new `MainWindow.closeEvent`, so the machine can never be left
+  unable to sleep after the app is gone.
+- Off by default (`GUI_DEFAULTS["keep_awake"]`); in-memory only, like the other
+  two preference toggles — it does not persist across launches.
+- Windows-only: elsewhere the menu item is disabled with an explanatory tooltip
+  rather than silently doing nothing. If the OS refuses the call, the menu item
+  re-syncs to the real state and the user is told.
+- **Verified**: read the flags back from the OS (0x80000003 while on, cleared on
+  release and on window close); menu toggle drives it end to end; 49/49 tests pass.
+
+## Earlier Completed (2026-08-05 — frontend overhaul)
 
 - **Design system**: new `gui_components/style.py` — color tokens (light + dark),
   spacing/type scale, `build_stylesheet()`, `apply_theme()` (Fusion + app-owned
@@ -112,7 +129,7 @@ for the full session record, including the bugs found and how they were resolved
 ```
 setup_report_processor.py    [status: stable; create_gantt_rows now emits EventName]
 gui_wrapper.py               [status: rewritten — 3-stage MainWindow + Settings menu]
-gui_components/              [status: rewritten; +style.py, +widgets.py, +result_panel.py]
+gui_components/              [status: rewritten; +style.py, +widgets.py, +result_panel.py, +keep_awake.py]
 location_config.json         [status: stable, v2 format]
 test_setup_report_processor.py [status: stable, 49/49 passing]
 requirements.txt             [status: updated, +PySide6 +pyqtgraph]

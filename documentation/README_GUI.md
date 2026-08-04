@@ -73,6 +73,9 @@ appears on the header and the section opens itself.
 - **Building Colors…** — timeline color per building
 - **Output Folder…** — where schedules are written
 - **Open timeline when finished** — open the chart automatically after each run
+- **Keep computer awake** — stop the computer sleeping and the display turning
+  off while this window is open, for leaving the timeline up on a screen. It
+  turns itself off when you close the app, and it is Windows-only
 - **Verbose logging** — detailed debug output in the log
 - **Open log file** / **Add desktop shortcut**
 - **About**

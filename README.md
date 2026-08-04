@@ -83,7 +83,7 @@ per-run workflow:
 - **Location Whitelist…** — manage which venues are included
 - **Building Colors…** — set the timeline color for each building
 - **Output Folder…** — change where schedules are written
-- **Open timeline when finished** / **Verbose logging** — preferences
+- **Open timeline when finished** / **Keep computer awake** / **Verbose logging** — preferences
 - **Open log file** / **Add desktop shortcut**
 
 ### Location Whitelist

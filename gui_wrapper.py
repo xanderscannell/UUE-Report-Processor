@@ -61,6 +61,7 @@ from gui_components import (
     FileListManager,
     GanttWindow,
     HeaderBar,
+    KeepAwake,
     LocationEditor,
     LogPanel,
     ProcessorWorker,
@@ -98,6 +99,8 @@ class MainWindow(QMainWindow):
         self.output_dir = Path(GUI_DEFAULTS["output_dir"])
         self.config_path = BASE_DIR / "location_config.json"
         self.building_colors = BuildingColors.load(self.config_path)
+        self.keep_awake = KeepAwake()
+        self.keep_awake.set_enabled(GUI_DEFAULTS["keep_awake"])
 
         self._build_ui()
         self._setup_logging()
@@ -341,6 +344,7 @@ class MainWindow(QMainWindow):
     # ==================================================================
     def _show_settings_menu(self):
         menu = QMenu(self)
+        menu.setToolTipsVisible(True)
 
         locations = QAction("Location Whitelist…", self)
         locations.triggered.connect(self._open_location_editor)
@@ -361,6 +365,22 @@ class MainWindow(QMainWindow):
         self.gantt_auto_action.setChecked(self._gantt_autolaunch)
         self.gantt_auto_action.toggled.connect(self._set_gantt_autolaunch)
         menu.addAction(self.gantt_auto_action)
+
+        self.keep_awake_action = QAction("Keep computer awake", self)
+        self.keep_awake_action.setCheckable(True)
+        self.keep_awake_action.setChecked(self.keep_awake.enabled)
+        if self.keep_awake.is_supported():
+            self.keep_awake_action.setToolTip(
+                "Stop the computer sleeping and the display turning off while "
+                "this window is open"
+            )
+        else:
+            self.keep_awake_action.setEnabled(False)
+            self.keep_awake_action.setToolTip(
+                f"Not available on this platform ({sys.platform})"
+            )
+        self.keep_awake_action.toggled.connect(self._set_keep_awake)
+        menu.addAction(self.keep_awake_action)
 
         verbose = QAction("Verbose logging", self)
         verbose.setCheckable(True)
@@ -420,6 +440,19 @@ class MainWindow(QMainWindow):
 
     def _set_gantt_autolaunch(self, enabled: bool):
         self._gantt_autolaunch = enabled
+
+    def _set_keep_awake(self, enabled: bool):
+        """Toggle the sleep inhibitor, re-syncing the menu if the OS says no."""
+        applied = self.keep_awake.set_enabled(enabled)
+        if applied != enabled:
+            self.keep_awake_action.blockSignals(True)
+            self.keep_awake_action.setChecked(applied)
+            self.keep_awake_action.blockSignals(False)
+            QMessageBox.warning(
+                self, "Keep Awake Unavailable",
+                "The computer's sleep setting could not be changed.\n\n"
+                "See the log for details — normal power settings still apply.",
+            )
 
     def _on_log_counts(self, warnings: int, errors: int):
         """Badge the collapsed Details section so problems are never silent."""
@@ -737,6 +770,14 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Shortcut Failed", f"Could not create shortcut:\n{result.stderr}")
         except Exception as e:
             QMessageBox.critical(self, "Shortcut Failed", f"Error creating shortcut:\n{e}")
+
+    # ==================================================================
+    # Window lifecycle
+    # ==================================================================
+    def closeEvent(self, event):
+        """Never leave the machine unable to sleep after the window is gone."""
+        self.keep_awake.release()
+        super().closeEvent(event)
 
     # ==================================================================
     # Theme
