@@ -69,12 +69,17 @@ at the day without leaving files behind.
 Click **View Timeline** on the results screen to open the day's schedule as a Gantt chart:
 
 - One horizontal bar per event, spanning setup time to closing time
-- Bars are colored by building, with a legend; every bar is also labeled by
-  location on the left. Colors are configurable — see **Building Colors** below
+- Each bar is labeled in place with its event name, room, and times — as much as
+  fits, with the name moving alongside the bar when the event is too short to
+  hold text
+- Bars are colored by building, with a legend. Colors are configurable — see
+  **Building Colors** below
 - Time-of-day axis covering 6 AM to midnight, widened automatically if events fall outside it
 - A dashed line marks the current time, refreshing every minute
-- Hover a bar for the event name, location, and exact times
-- Process multiple reports to get a report selector for switching between days
+- Hover a bar to hold a card with the full event name, room, and exact times
+- **Several days at once** — the date is on the left axis, so a weekend stacks
+  into one chart. Drop one file per day (the database exports one day at a
+  time); a **Day** filter appears for narrowing to a single day
 
 To have it open automatically after every run, enable **Settings → Open timeline
 when finished**.

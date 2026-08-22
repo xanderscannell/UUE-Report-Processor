@@ -109,10 +109,17 @@ Open it with **View Timeline** on the results screen, or turn on
 - Bars are colored by building, with a legend; each is also labeled by location
 - Time-of-day axis covering 6 AM to midnight, widened automatically if events
   fall outside it
-- A dashed line marks the current time and refreshes every minute
-- Hover a bar for the event name, location, and exact times
-- The view is fixed (no accidental panning or zooming)
-- Process several reports at once to get a **Report** selector for switching between days
+- Each bar is labeled in place with its event name, room, and times — as much as
+  fits at the bar's width; short events put their label alongside instead
+- A dashed line marks the current time and refreshes every minute. It crosses
+  only the day it belongs to
+- Hover a bar to hold a card with the full details; it follows the cursor and
+  stays until you leave the bar
+- The view is fixed (no accidental panning or zooming), but scrolls vertically
+  once a day has more events than fit at a readable row height
+- **Several days at once** — the left axis names the date, so days stack into
+  one chart, separated by a rule. Drop one file per day; a **Day** filter
+  appears for narrowing to one
 
 ---
 
@@ -195,6 +202,12 @@ All processing happens locally on your computer; no data is sent anywhere.
 
 **Can I process multiple reports at once?**
 Yes — drop several in, or Ctrl+Click multiple files when browsing.
+
+**Can I see a whole weekend on one timeline?**
+Yes. The database exports one day per file, so drop one file per day and process
+them together — the timeline stacks them, oldest at the top, each labeled with
+its date. Use the **Day** filter to narrow to one day. Days are keyed by the
+date the events carry, so the order you drop the files in does not matter.
 
 **Can I get both Excel and CSV?**
 Yes — turn on both. Turning off both gives you a timeline-only run.

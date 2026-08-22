@@ -357,7 +357,8 @@ class EventScheduleProcessor:
     def create_gantt_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
         """
         Create single-row events for the Gantt chart.
-        Each event becomes: EventName, Location, StartTime (24h), EndTime (24h)
+        Each event becomes: EventName, Location, StartTime (24h), EndTime (24h),
+        and the Date it falls on.
 
         Args:
             events: List of event dictionaries with setup_time and closing_time
@@ -375,7 +376,7 @@ class EventScheduleProcessor:
             >>> rows = processor.create_gantt_rows(events)
             >>> rows[0]
             {'EventName': 'Test Event', 'Location': 'UC 1227',
-             'StartTime': '01:30', 'EndTime': '14:00'}
+             'StartTime': '01:30', 'EndTime': '14:00', 'Date': '06-23-26'}
         """
         logger.info("Creating Gantt event rows...")
         rows = []
@@ -398,7 +399,11 @@ class EventScheduleProcessor:
                 "EventName": event.get("event_name", ""),
                 "Location": event["location"],
                 "StartTime": start_time_24h,
-                "EndTime": end_time_24h
+                "EndTime": end_time_24h,
+                # Which day to stack this row under on the timeline. Sources
+                # that date each event (the Excel export) set it per row; the
+                # PDF has one date for the whole report.
+                "Date": event.get("date") or self.report_date or ""
             })
 
         logger.info(f"Created {len(rows)} Gantt event rows from {len(events)} events")

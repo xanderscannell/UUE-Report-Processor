@@ -305,6 +305,12 @@ class DailyEventsExcelProcessor(EventScheduleProcessor):
 
         return index
 
+    @staticmethod
+    def _sheet_date(title: str) -> Optional[datetime]:
+        """The date in an 'Event List Aug 22 2026' sheet title, if it has one."""
+        match = SHEET_DATE_PATTERN.search(title)
+        return _parse_date(match.group(1)) if match else None
+
     def _collect_events(self) -> List[Dict[str, str]]:
         """
         Read every event row in the workbook and filter it by location.
@@ -336,6 +342,9 @@ class DailyEventsExcelProcessor(EventScheduleProcessor):
                     continue
 
                 index = self._header_index(header, title)
+                # Each sheet is one day, so its title dates every row on it —
+                # the backstop for an export whose cells hold bare times.
+                sheet_date = self._sheet_date(title)
                 logger.debug(f"Reading sheet '{title}'")
 
                 for values in rows:
@@ -344,7 +353,7 @@ class DailyEventsExcelProcessor(EventScheduleProcessor):
 
                     total_rows += 1
                     try:
-                        event = self._parse_event_row(values, index)
+                        event = self._parse_event_row(values, index, sheet_date)
                     except Exception as e:
                         logger.warning(f"Error parsing event row: {e}")
                         continue
@@ -360,7 +369,7 @@ class DailyEventsExcelProcessor(EventScheduleProcessor):
         return events
 
     def _parse_event_row(
-        self, values, index: Dict[str, int]
+        self, values, index: Dict[str, int], sheet_date: Optional[datetime] = None
     ) -> Optional[Dict[str, str]]:
         """
         Parse a single booking row into an event record.
@@ -368,6 +377,8 @@ class DailyEventsExcelProcessor(EventScheduleProcessor):
         Args:
             values: The row's cell values
             index: Column name to position map from _header_index()
+            sheet_date: The day this row's sheet covers, used when the row's
+                own cells carry no date
 
         Returns:
             Dictionary with event details or None if the row is excluded
@@ -408,9 +419,19 @@ class DailyEventsExcelProcessor(EventScheduleProcessor):
             logger.info(f"EXCLUDED: '{event_name}' - no event times found")
             return None
 
+        # Which day this booking is on. Real exports put a full datetime in
+        # Event Start, so the row dates itself; Day and the sheet title are
+        # backstops for exports that store a bare time-of-day.
+        day = (
+            _parse_date(column("Event Start"))
+            or _parse_date(column("Day"))
+            or sheet_date
+        )
+
         return {
             "event_name": event_name,
             "location": location,
             "setup_time": setup_time,
             "closing_time": closing_time,
+            "date": day.strftime("%m-%d-%y") if day else "",
         }

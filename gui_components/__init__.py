@@ -27,7 +27,7 @@ from .file_list import FileListManager
 from .location_editor import LocationEditor
 from .result_panel import ResultPanel
 from .worker import ProcessorWorker
-from .gantt_window import GanttWindow
+from .gantt_window import GanttWindow, group_rows_by_day
 
 __all__ = [
     "GUI_DEFAULTS",
@@ -61,4 +61,5 @@ __all__ = [
     "ResultPanel",
     "ProcessorWorker",
     "GanttWindow",
+    "group_rows_by_day",
 ]

@@ -53,9 +53,9 @@ Before the session ends:
 
 ## Current Focus
 
-**Phase**: Timeline legibility — labels on the bars themselves (ADR-009)
-**Working on**: Checking the in-bar labels on a real busy day, verifying the Excel
-path against real exports, then rebuilding the portable exe
+**Phase**: Multi-day timeline (ADR-011)
+**Working on**: Checking the stacked weekend and the in-bar labels on a real
+display, then rebuilding the portable exe
 **Key constraint**: Must not break existing regex-based parsing for working PDF formats —
 the PDF reader stays a first-class source, not a deprecated one.
 Accepted file types come from `SUPPORTED_SUFFIXES` in `setup_report_processor.py`;

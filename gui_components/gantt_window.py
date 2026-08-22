@@ -6,6 +6,13 @@ Embedded pyqtgraph timeline of the day's events.
 One horizontal bar per event — the **date** on the Y axis, time of day on the X
 axis — with a live current-time indicator.
 
+Every loaded day is stacked into one chart, separated by a rule and labeled with
+its own date, all sharing a single time-of-day axis. The selector filters down to
+one day when a weekend gets too busy to read at once. The database exports one
+day per file, so a weekend arrives as several files; they are keyed by the date
+their rows carry, not by the file they came from, so a single export holding two
+sheets lands as two blocks just the same.
+
 Each bar carries its own label — event name, room, and time range, laid out
 against the bar's pixel width so it re-fits on every resize and steps outside
 the bar when the event is too short to hold text. Hovering still shows the full
@@ -23,7 +30,7 @@ legend entry, which is how "UC and RUC are the same building" is expressed.
 Every bar also carries its room as text, so identity never rests on color alone.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import pyqtgraph as pg
@@ -49,6 +56,9 @@ from .widgets import label as make_label
 
 pg.setConfigOptions(antialias=True)
 
+# Selector entry that stacks every loaded day rather than filtering to one.
+ALL_DAYS = "__all__"
+
 # The hover card is the fallback for whatever a bar was too small to print, so
 # it has to stay put for as long as the cursor is on the bar. Qt's own expire
 # timer pulls it after about three seconds; hiding is driven by _on_hover and
@@ -63,6 +73,34 @@ def _to_hours(hhmm: str) -> Optional[float]:
         return int(h) + int(m) / 60.0
     except (ValueError, AttributeError):
         return None
+
+
+def day_sort_key(key: str):
+    """
+    Order day keys chronologically, with undated ones last.
+
+    A key is normally ``MM-DD-YY``, but a report whose date could not be read
+    falls back to the source filename — those sort to the end, alphabetically,
+    rather than being dropped or pretending to be a date.
+    """
+    try:
+        return (0, datetime.strptime(key, "%m-%d-%y"), "")
+    except (ValueError, TypeError):
+        return (1, datetime.min, str(key))
+
+
+def group_rows_by_day(rows: List[dict], fallback: str = "") -> Dict[str, List[dict]]:
+    """
+    Split gantt rows into ``{day key: rows}``, keeping each day's own order.
+
+    Rows carry the date they fall on (see ``create_gantt_rows``), which is what
+    lets one file holding several days become several blocks. Rows from a source
+    that could not date itself fall back to the report label.
+    """
+    days: Dict[str, List[dict]] = {}
+    for row in rows:
+        days.setdefault(row.get("Date") or fallback, []).append(row)
+    return days
 
 
 def _fmt_clock(hours: float) -> str:
@@ -108,13 +146,18 @@ class GanttWindow(QMainWindow):
         # Shared by the hover lookup and the label painter: x0, x1, y0, y1,
         # the row data, the resolved fill, and the formatted time range.
         self._bars: List[dict] = []
-        self._time_line: Optional[pg.InfiniteLine] = None
+        self._time_line = None          # bounded to today's block, when loaded
         self._x_range = (GANTT["x_start"], GANTT["x_end"])
         self._row_count = 0
         self._visible_rows = 0
-        # (label, first row, last row) per day, for the Y axis. One entry today.
+        # (label, first row, last row) per day block, for the Y axis.
         self._date_groups: List[tuple] = []
+        # {day key: (first row, last row)}, so the clock can find today's block.
+        self._day_bounds: Dict[str, tuple] = {}
         self._windowing = False   # re-entrancy guard for _update_y_window
+        # The day the user actually picked, as opposed to whatever happened to
+        # be showing. Only a real choice survives new data arriving.
+        self._chosen_day: Optional[str] = None
 
         self._build_ui()
 
@@ -144,10 +187,12 @@ class GanttWindow(QMainWindow):
         top.addLayout(title_col)
         top.addStretch()
 
-        self.report_label = make_label("Report", "muted")
+        self.report_label = make_label("Day", "muted")
         top.addWidget(self.report_label)
         self.selector = QComboBox()
-        self.selector.currentTextChanged.connect(self._render)
+        # The visible text is a friendly date while the item's data stays the
+        # raw day key, so the two never have to agree on one string.
+        self.selector.currentIndexChanged.connect(self._on_day_selected)
         top.addWidget(self.selector)
         layout.addLayout(top)
 
@@ -159,7 +204,9 @@ class GanttWindow(QMainWindow):
         self.plot = pg.PlotWidget()
         # Reserve room for the date label; pyqtgraph clips it otherwise.
         left = self.plot.getAxis("left")
-        left.setStyle(tickTextOffset=8, tickLength=0)
+        # tickLength=0 still paints a zero-length stub beside each label, and a
+        # tick means nothing on an axis whose labels name whole blocks of rows.
+        left.setStyle(tickTextOffset=8, tickLength=0, tickAlpha=0)
         left.setWidth(GANTT["left_axis_width"])
         self.plot.getAxis("bottom").setStyle(tickTextOffset=8)
 
@@ -194,25 +241,38 @@ class GanttWindow(QMainWindow):
 
     # -- data ------------------------------------------------------------
     def set_datasets(self, datasets: Dict[str, List[dict]]):
-        """Replace all chart datasets ({report label: gantt rows})."""
+        """Replace all chart datasets ({day key: gantt rows})."""
         self._datasets = dict(datasets)
-        current = self.selector.currentText()
+        keys = sorted(self._datasets, key=day_sort_key)
         self.selector.blockSignals(True)
         self.selector.clear()
-        self.selector.addItems(self._datasets.keys())
-        if current in self._datasets:
-            self.selector.setCurrentText(current)
+        if len(keys) > 1:
+            # First, and the default: a weekend is more useful whole.
+            self.selector.addItem("All days", ALL_DAYS)
+        for key in keys:
+            self.selector.addItem(self._axis_date(key), key)
+        # Falling back to index 0 means a second day arriving mid-run opens the
+        # weekend rather than leaving you on day one — but only when the day on
+        # screen was a default rather than something the user asked for.
+        restored = self.selector.findData(self._chosen_day)
+        self.selector.setCurrentIndex(restored if restored >= 0 else 0)
         self.selector.blockSignals(False)
 
-        # The report selector only earns its space with more than one report.
-        multiple = len(self._datasets) > 1
+        # The day filter only earns its space with more than one day.
+        multiple = len(keys) > 1
         self.report_label.setVisible(multiple)
         self.selector.setVisible(multiple)
-        self._render(self.selector.currentText())
+        self._render()
+
+    def _on_day_selected(self, _index: int):
+        # Repopulating blocks this signal, so reaching here means the user
+        # picked a day themselves.
+        self._chosen_day = self.selector.currentData()
+        self._render()
 
     def refresh(self):
         """Redraw with the current building colors (after the setting changes)."""
-        self._render(self.selector.currentText())
+        self._render()
 
     def prefixes_in_data(self) -> List[str]:
         """Every building prefix appearing in the loaded reports."""
@@ -226,21 +286,30 @@ class GanttWindow(QMainWindow):
         )
 
     # -- rendering -------------------------------------------------------
-    def _render(self, report: str):
+    def _days_for(self, key: Optional[str]) -> List[tuple]:
+        """The (day key, rows) blocks to draw, oldest first."""
+        keys = sorted(self._datasets, key=day_sort_key)
+        if key and key != ALL_DAYS:
+            keys = [k for k in keys if k == key]
+        return [(k, self._datasets[k]) for k in keys if self._datasets.get(k)]
+
+    def _render(self, key: Optional[str] = None):
         t = tokens()
-        self.setWindowTitle(f"Event Timeline — {report}" if report else "Event Timeline")
-        self.date_label.setText(self._format_date(report))
+        if key is None:
+            key = self.selector.currentData()
 
         self.plot.clear()
         self._time_line = None
         self._bars = []
         self._row_count = 0
         self._date_groups = []
+        self._day_bounds = {}
         self.vscroll.hide()
         self._clear_legend()
 
-        rows = self._datasets.get(report)
-        if not rows:
+        days = self._days_for(key)
+        self._set_heading(days)
+        if not days:
             self.plot.hide()
             self.empty_label.show()
             return
@@ -251,38 +320,48 @@ class GanttWindow(QMainWindow):
 
         starts, ends, y0s, y1s, brushes = [], [], [], [], []
         seen_buildings = []
+        boundaries = []
 
         idx = 0
-        for row in rows:
-            start = _to_hours(row.get("StartTime", ""))
-            end = _to_hours(row.get("EndTime", ""))
-            if start is None or end is None:
-                continue
-            if end < start:          # crosses midnight
-                end += 24
+        for day_key, rows in days:
+            block_start = idx
+            for row in rows:
+                start = _to_hours(row.get("StartTime", ""))
+                end = _to_hours(row.get("EndTime", ""))
+                if start is None or end is None:
+                    continue
+                if end < start:          # crosses midnight
+                    end += 24
 
-            building = prefix_of(row.get("Location", ""))
-            if building and building not in seen_buildings:
-                seen_buildings.append(building)
+                building = prefix_of(row.get("Location", ""))
+                if building and building not in seen_buildings:
+                    seen_buildings.append(building)
 
-            y0 = idx + (1 - bar_h) / 2
-            starts.append(start)
-            ends.append(end)
-            y0s.append(y0)
-            y1s.append(y0 + bar_h)
-            fill = self.buildings.color(building, self._dark)
-            brushes.append(QColor(fill))
-            self._bars.append(
-                {
-                    "x0": start, "x1": end, "y0": y0, "y1": y0 + bar_h,
-                    "row": row,
-                    "color": fill,            # the label picks its ink from this
-                    # Formatted once, so the bar and the tooltip can never
-                    # disagree about a time.
-                    "times": f"{_fmt_clock(start)} – {_fmt_clock(end)}",
-                }
-            )
-            idx += 1
+                y0 = idx + (1 - bar_h) / 2
+                starts.append(start)
+                ends.append(end)
+                y0s.append(y0)
+                y1s.append(y0 + bar_h)
+                fill = self.buildings.color(building, self._dark)
+                brushes.append(QColor(fill))
+                self._bars.append(
+                    {
+                        "x0": start, "x1": end, "y0": y0, "y1": y0 + bar_h,
+                        "row": row,
+                        "color": fill,        # the label picks its ink from this
+                        # Formatted once, so the bar and the tooltip can never
+                        # disagree about a time.
+                        "times": f"{_fmt_clock(start)} – {_fmt_clock(end)}",
+                    }
+                )
+                idx += 1
+
+            # A day whose every row failed to parse gets no block at all, rather
+            # than a labeled band with nothing in it.
+            if idx > block_start:
+                self._date_groups.append((self._axis_date(day_key), block_start, idx))
+                self._day_bounds[day_key] = (block_start, idx)
+                boundaries.append(idx)
 
         if idx == 0:
             self.plot.hide()
@@ -302,6 +381,14 @@ class GanttWindow(QMainWindow):
         labels.setZValue(10)
         self.plot.addItem(labels)
 
+        # One rule between days. The last boundary is the bottom of the chart,
+        # which the plot border already draws.
+        for edge in boundaries[:-1]:
+            self.plot.addItem(pg.InfiniteLine(
+                pos=edge, angle=0, movable=False,
+                pen=pg.mkPen(t["border_strong"], width=1),
+            ))
+
         # X axis: clamp to the configured window but always include the data.
         x_start = min(GANTT["x_start"], int(min(starts)))
         x_end = max(GANTT["x_end"], int(max(ends)) + 1)
@@ -313,26 +400,40 @@ class GanttWindow(QMainWindow):
         # clipped by the plot edge.
         self.plot.setXRange(x_start - 0.35, x_end + 0.35, padding=0)
 
-        # Y axis: the day these rows belong to, first event on top. One group
-        # per date, so a second day is a second entry rather than a rewrite.
+        # Y axis: oldest day on top, each block labeled with its own date.
         self.plot.getViewBox().invertY(True)
-        self._date_groups = [(self._axis_date(report), 0, idx)]
         self._row_count = idx
         self.vscroll.setValue(0)
         self._update_y_window()
 
-        # Current-time indicator.
-        # No "now" caption: every row carries text now, so the label had nowhere
+        # Current-time indicator, drawn only across today's block — run full
+        # height it would claim to be "now" on every day stacked below.
+        # No "now" caption: every row carries text, so the label had nowhere
         # left to sit without covering an event. Against an hour-labeled axis a
         # red dashed rule already reads as the current time.
-        self._time_line = pg.InfiniteLine(
-            angle=90, movable=False,
+        self._time_line = pg.PlotCurveItem(
             pen=pg.mkPen(GANTT["time_line"], width=2, style=Qt.DashLine),
         )
+        self._time_line.setZValue(11)
         self.plot.addItem(self._time_line)
         self._update_time_line()
 
         self._build_legend(seen_buildings)
+
+    def _set_heading(self, days: List[tuple]) -> None:
+        """Name the window and its subtitle for the day, or the range of days."""
+        if not days:
+            self.setWindowTitle("Event Timeline")
+            self.date_label.setText("")
+            return
+        if len(days) == 1:
+            title = self._axis_date(days[0][0])
+            subtitle = self._format_date(days[0][0])
+        else:
+            title = f"{self._axis_date(days[0][0])} – {self._axis_date(days[-1][0])}"
+            subtitle = f"{title} · {len(days)} days"
+        self.setWindowTitle(f"Event Timeline — {title}")
+        self.date_label.setText(subtitle)
 
     def _update_y_window(self, *_):
         """
@@ -384,10 +485,12 @@ class GanttWindow(QMainWindow):
                 continue                    # this day is scrolled out of view
             major.append(((max(first, top) + min(last, bottom)) / 2, label))
 
-        # Unlabeled minor ticks keep the row gridlines that guide the eye across
-        # a wide chart; without them the only line would be through a label.
-        minor = [(y, "") for y in range(top, bottom + 1)]
-        self.plot.getAxis("left").setTicks([major, minor])
+        # One tick per day and nothing else. Per-row ticks were left over from
+        # the location axis, where a line was what carried the eye from a room
+        # name across to its bar; with the rooms on the bars there is nothing
+        # for them to connect, and the only horizontal rules worth drawing are
+        # the ones between days (see _render).
+        self.plot.getAxis("left").setTicks([major])
 
     def eventFilter(self, obj, event):
         # A cursor can leave the plot without a final move event landing off a
@@ -402,21 +505,42 @@ class GanttWindow(QMainWindow):
             return True
         return super().eventFilter(obj, event)
 
+    def _place_clock(self):
+        """
+        Which block the current-time marker belongs on, and where along the axis.
+
+        Two things decide it. The marker only crosses the day it actually
+        belongs to — run full height it would claim to be "now" on every day
+        stacked below. And between midnight and the start of the axis you are
+        working the tail of *yesterday's* schedule, which is drawn on the
+        extension past 24:00 (01:30 sits at x=25.5), not in the small hours of
+        today's own block, which the axis does not show at all.
+
+        Returns:
+            ``(block bounds, x position)``, bounds being None when no loaded
+            day is the one currently running.
+        """
+        now = datetime.now()
+        hours = now.hour + now.minute / 60 + now.second / 3600
+        x_start, x_end = self._x_range
+
+        if hours < x_start and x_end > 24:
+            yesterday = (now - timedelta(days=1)).strftime("%m-%d-%y")
+            span = self._day_bounds.get(yesterday)
+            if span:
+                return span, hours + 24
+
+        return self._day_bounds.get(now.strftime("%m-%d-%y")), hours
+
     def _update_time_line(self):
         if self._time_line is None:
             return
-        now = datetime.now()
-        hours = now.hour + now.minute / 60 + now.second / 3600
-
-        # When the day runs past midnight, bars ending after 00:00 are drawn on
-        # an extended axis (01:30 sits at x=25.5). The clock has to follow onto
-        # that extension, or the marker lands back at x=1.5 and disappears off
-        # the left edge during exactly the hours it matters most.
-        x_start, x_end = self._x_range
-        if x_end > 24 and hours < x_start:
-            hours += 24
-
-        self._time_line.setPos(hours)
+        span, hours = self._place_clock()
+        if span is None:
+            self._time_line.setData([], [])      # no loaded day is today
+            return
+        first, last = span
+        self._time_line.setData([hours, hours], [first, last])
 
     # -- legend ----------------------------------------------------------
     def _clear_legend(self):
@@ -499,11 +623,10 @@ class GanttWindow(QMainWindow):
             axis.setPen(pg.mkPen(t["text_faint"], width=1))
             axis.setTextPen(pg.mkPen(t["text_muted"]))
 
-        # Set the grid per axis rather than via showGrid(), which forces one
-        # alpha on both: the hour lines carry the reading, the row lines only
-        # guide the eye from a label across to its bar.
+        # Only the hour lines are drawn from the axis; they carry the reading.
+        # The Y axis draws no grid at all, or every date label would trail a
+        # rule across the chart from a tick that means nothing on its own.
         self.plot.getAxis("bottom").setGrid(int(GANTT["grid_alpha"] * 255))
-        self.plot.getAxis("left").setGrid(int(GANTT["grid_alpha_y"] * 255))
         self.plot.setLabel("bottom", "Time of day", color=t["text_faint"])
         self.plot.setLabel("left", "")
 
@@ -515,7 +638,7 @@ class GanttWindow(QMainWindow):
             QEvent.Type.ThemeChange,
         ):
             self._apply_theme()
-            self._render(self.selector.currentText())
+            self._render()
         super().changeEvent(event)
 
     @staticmethod

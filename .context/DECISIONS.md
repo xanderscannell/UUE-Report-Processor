@@ -491,6 +491,8 @@ nowhere to put a date.
   the chart.
 - **Row gridlines survive as an unlabeled minor tick level.** Without them the
   only horizontal line on the chart would be the one through the date label.
+  *(Superseded by ADR-011: once days stack, the rules between them are the
+  lines worth having, and the per-row ones only add noise.)*
 - **`left_axis_width` 190 → 104**, which is what `'Tue, Jun 23'` needs. The
   reclaimed 86px goes straight into bar width, so more bars fit their text.
 - **The room outranks the times inside the bar when only one fits.** Previously
@@ -528,3 +530,78 @@ nowhere to put a date.
 **Files**:
 `gui_components/gantt_window.py:_place_date_ticks`, `:_axis_date`,
 `gui_components/gantt_labels.py:_paint_bar`, `gui_components/settings.py:GANTT`
+
+## ADR-011: Stack multiple days on one timeline, keyed by the date events carry
+
+**Date**: 2026-08-22
+**Status**: Accepted
+
+**Context**:
+The events database cannot export more than one day per file, so a weekend
+arrives as several `.xlsx` files. Each became its own dropdown entry and only
+one was ever drawn — the days could not be seen together.
+
+ADR-010 had already built the chart side: `_date_groups` and
+`_place_date_ticks` iterate N blocks and pin each label to the visible part of
+its block. What was missing was upstream. Gantt rows had four keys and no date,
+and `_on_gantt_ready` did `self._gantt_data[report] = rows` — keyed by *file*.
+
+**Decision**:
+- **Events carry their own date.** `create_gantt_rows` emits a `Date` key. The
+  Excel reader resolves it per row: the `Event Start` cell (a full datetime in
+  real exports), then the `Day` column, then the sheet title's date. The PDF
+  path sets none and falls back to the processor's single `report_date`.
+- **The app keys datasets by date, not by file.** `_on_gantt_ready` splits
+  incoming rows with `group_rows_by_day`. One export holding two sheets
+  therefore lands as two blocks, exactly like two files would.
+- **The chart stacks every loaded day**, oldest on top, separated by a rule, on
+  one shared time-of-day axis. The selector became a **Day** filter with an
+  "All days" entry, default when more than one day is loaded.
+- **Only an explicit choice survives new data.** `_chosen_day` is set from the
+  selector's signal, which repopulation blocks — so a second file arriving
+  mid-run opens the weekend rather than leaving you pinned to day one.
+- **The clock crosses only the day it belongs to.** `_place_clock` returns the
+  block and the x position together; run full height the marker would claim to
+  be "now" on every day stacked below.
+- **Output is unchanged**: one `MM-DD-YY_schedule.xlsx` per input file.
+- **No sorting.** Both real exports are already ordered by `Event Start`, so
+  rows keep source order; only the day blocks are ordered.
+- **The Y axis draws no grid and no tick marks**, superseding that part of
+  ADR-010. Per-row rules were left from the location axis, where a line carried
+  the eye from a room name across to its bar; with the rooms on the bars there
+  is nothing for them to connect. What remains is one rule between days, drawn
+  explicitly in `_render` rather than as a side effect of a tick. `tickLength=0`
+  was not enough on its own — it still paints a zero-length stub beside each
+  label — so the left axis also sets `tickAlpha=0`.
+
+**Rationale**:
+- Dating the *event* rather than the *file* is what makes the two shapes — one
+  day per file, and several sheets in one file — collapse into a single case.
+  The reader already read every sheet; it just threw the sheet date away.
+- `Event Start` being a real datetime means the row dates itself, so the sheet
+  title and `Day` are only backstops for an export that stores bare times.
+- Keying by date makes a re-export of a day replace it cleanly, which is what a
+  re-pull should do. It now logs a warning rather than replacing silently.
+- The selector default had to distinguish "showing one day because that is all
+  there is" from "showing one day because you asked" — otherwise processing a
+  weekend opens on Saturday alone.
+
+**Consequences**:
+- (+) A weekend reads as one chart, and the drop order does not matter.
+- (+) The past-midnight clock fixup got correct in the process: between midnight
+  and the start of the axis it now rides *yesterday* block on the extension
+  past 24:00, which is the schedule actually running, rather than the small
+  hours of today, which the axis does not show.
+- (−) The X axis is the union across every rendered day, so one overnight event
+  on Sunday extends the axis for Saturday too. Correct for a shared axis, but it
+  compresses the common hours slightly.
+- (−) Two sources covering the same date still replace rather than merge; the
+  on-disk `MM-DD-YY_schedule.xlsx` overwrites to match. Now warned, not silent.
+- (−) The results screen still counts files, not days. Three files collapsing to
+  two dates reads as 3.
+
+**Files**:
+`daily_events_excel.py:_parse_event_row`, `:_collect_events`,
+`setup_report_processor.py:create_gantt_rows`,
+`gui_components/gantt_window.py:group_rows_by_day`, `:day_sort_key`,
+`:_days_for`, `:_place_clock`, `gui_wrapper.py:_on_gantt_ready`

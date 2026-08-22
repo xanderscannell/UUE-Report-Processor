@@ -61,6 +61,7 @@ from gui_components import (
     DragDropZone,
     FileListManager,
     GanttWindow,
+    group_rows_by_day,
     HeaderBar,
     KeepAwake,
     LocationEditor,
@@ -75,6 +76,11 @@ from gui_components import (
     label,
     prefix_of,
 )
+
+# A child of the logger the Details panel attaches its handler to (see
+# _setup_logging), so timeline messages surface there instead of vanishing
+# into the root logger. Same reason daily_events_excel names itself a child.
+logger = logging.getLogger("setup_report_processor.timeline")
 
 STAGE_EMPTY, STAGE_WORK, STAGE_DONE = 0, 1, 2
 
@@ -98,7 +104,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.processing = False
         self.gantt_window = None
-        self._gantt_data = {}  # {report label: gantt rows}
+        self._gantt_data = {}  # {day key: gantt rows}
         self.prefs_path = BASE_DIR / PREFS_FILENAME
         self.prefs = Preferences.load(self.prefs_path)
         self.output_dir = self.prefs.get_path("output_dir")
@@ -643,7 +649,20 @@ class MainWindow(QMainWindow):
         self.file_list.set_status(path, state, detail)
 
     def _on_gantt_ready(self, report: str, rows: list):
-        self._gantt_data[report] = rows
+        # Keyed by the date the rows carry rather than by the file they came
+        # from: the export is one day per file, so a weekend arrives as several
+        # files — but a single export holding two sheets has to land as two
+        # blocks just the same.
+        for day_key, day_rows in group_rows_by_day(rows, fallback=report).items():
+            if day_key in self._gantt_data:
+                # A re-export of a day already loaded. Replacing is what you
+                # want from a re-pull; say so rather than losing rows silently.
+                logger.warning(
+                    f"{day_key} was already loaded - replacing it with the "
+                    f"rows from {report}"
+                )
+            self._gantt_data[day_key] = day_rows
+
         if self.gantt_window is not None and self.gantt_window.isVisible():
             self.gantt_window.set_datasets(self._gantt_data)
 

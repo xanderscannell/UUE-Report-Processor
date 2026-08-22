@@ -8,7 +8,7 @@ Comprehensive test suite for the Daily Setup Report Processor.
 import json
 import pytest
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, time
 from pathlib import Path
 from openpyxl import Workbook
 
@@ -19,6 +19,7 @@ from daily_events_excel import DailyEventsExcelProcessor, _format_time
 # without PySide6 installed.
 from gui_components.preferences import Preferences
 from gui_components.settings import GUI_DEFAULTS
+from gui_components.gantt_window import day_sort_key, group_rows_by_day
 
 
 class TestInitialization:
@@ -782,6 +783,7 @@ class TestDailyEventsExcel:
             "location": "UC 1225",
             "setup_time": "9:00 AM",
             "closing_time": "3:30 PM",
+            "date": "08-22-26",
         }
 
     def test_unlisted_locations_are_dropped(self, tmp_path, export_config):
@@ -922,6 +924,7 @@ class TestDailyEventsExcel:
             "Location": "UC 1225",
             "StartTime": "09:00",
             "EndTime": "15:30",
+            "Date": "08-22-26",
         }]
 
 
@@ -958,3 +961,134 @@ class TestProcessorFactory:
         path = write_export(tmp_path / "export.xlsx", [booking("UC 1225")])
         processor = create_processor(str(path), config_path=export_config)
         assert set(processor._location_whitelist) == {"UC 1225", "UC Kochoff Hall C"}
+
+
+class TestEventDates:
+    """
+    Every event has to know which day it falls on.
+
+    The timeline stacks a weekend into one chart keyed by these dates, and the
+    database exports one day per file — so a wrong or missing date silently
+    merges two days or drops one out of the picture.
+    """
+
+    def test_date_comes_from_the_event_start_cell(self, tmp_path, export_config):
+        """Real exports put a full datetime in Event Start, so rows self-date."""
+        path = write_export(tmp_path / "export.xlsx", [booking("UC 1225")])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+
+        assert processor._collect_events()[0]["date"] == "08-22-26"
+
+    def test_date_falls_back_to_the_day_column(self, tmp_path, export_config):
+        """An export storing a bare time-of-day still has the Day column."""
+        row = booking("UC 1225")
+        row[1] = time(9, 0)          # Event Start, no date attached
+        row[2] = time(15, 30)
+        path = write_export(tmp_path / "export.xlsx", [row])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+
+        assert processor._collect_events()[0]["date"] == "08-22-26"
+
+    def test_date_falls_back_to_the_sheet_title(self, tmp_path, export_config):
+        """With neither a dated cell nor a Day value, the sheet names the day."""
+        row = booking("UC 1225")
+        row[0] = None                # Day
+        row[1] = time(9, 0)
+        row[2] = time(15, 30)
+        path = write_export(
+            tmp_path / "export.xlsx", {"Event List Sep 05 2026": [row]},
+            sheet_titles=("Event List Sep 05 2026",),
+        )
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+
+        assert processor._collect_events()[0]["date"] == "09-05-26"
+
+    def test_one_workbook_can_hold_two_days(self, tmp_path, export_config):
+        """
+        A multi-sheet export must date each sheet separately.
+
+        The Parameter Summary carries a single report date for the whole file,
+        so relying on it would collapse both sheets onto day one.
+        """
+        titles = ("Event List Aug 22 2026", "Event List Aug 23 2026")
+        day_two = datetime(2026, 8, 23)
+        path = write_export(
+            tmp_path / "export.xlsx",
+            {
+                titles[0]: [booking("UC 1225")],
+                titles[1]: [booking("UC 1225", name="Day Two", day=day_two)],
+            },
+            sheet_titles=titles,
+        )
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        rows = processor.create_gantt_rows(processor._collect_events())
+
+        assert [r["Date"] for r in rows] == ["08-22-26", "08-23-26"]
+        assert processor.report_date == "08-22-26"   # the file is still "day one"
+
+    def test_gantt_rows_carry_the_date(self, tmp_path, export_config):
+        """The timeline groups on this key, so it must survive the conversion."""
+        path = write_export(tmp_path / "export.xlsx", [booking("UC 1225")])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        rows = processor.create_gantt_rows(processor._collect_events())
+
+        assert rows[0]["Date"] == "08-22-26"
+
+    def test_undated_events_fall_back_to_the_report_date(self, tmp_path, export_config):
+        """
+        A source with no per-event date uses the report's own, as the PDF does.
+
+        The PDF reader dates the report once from page one and never per event,
+        so create_gantt_rows has to supply it.
+        """
+        path = write_export(tmp_path / "export.xlsx", [booking("UC 1225")])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+
+        events = [{
+            "event_name": "No Date Here", "location": "UC 1225",
+            "setup_time": "9:00 AM", "closing_time": "3:30 PM",
+        }]
+        assert processor.create_gantt_rows(events)[0]["Date"] == processor.report_date
+
+
+class TestDayGrouping:
+    """Splitting and ordering the day blocks the timeline stacks."""
+
+    def test_rows_split_by_their_own_date(self):
+        """One file holding two days has to become two blocks."""
+        rows = [
+            {"EventName": "A", "Date": "08-22-26"},
+            {"EventName": "B", "Date": "08-23-26"},
+            {"EventName": "C", "Date": "08-22-26"},
+        ]
+        days = group_rows_by_day(rows)
+
+        assert set(days) == {"08-22-26", "08-23-26"}
+        assert [r["EventName"] for r in days["08-22-26"]] == ["A", "C"]
+
+    def test_source_order_is_kept_within_a_day(self):
+        """The export is already sorted by start time; do not resort it."""
+        rows = [
+            {"EventName": "late", "Date": "08-22-26"},
+            {"EventName": "early", "Date": "08-22-26"},
+        ]
+        assert [r["EventName"] for r in group_rows_by_day(rows)["08-22-26"]] == [
+            "late", "early"
+        ]
+
+    def test_undated_rows_use_the_fallback(self):
+        """A report whose date could not be read still gets one block."""
+        rows = [{"EventName": "A", "Date": ""}, {"EventName": "B"}]
+        assert list(group_rows_by_day(rows, fallback="SetupReport")) == ["SetupReport"]
+
+    def test_days_sort_chronologically_across_a_year_boundary(self):
+        """String order would put January 2027 before August 2026."""
+        keys = ["01-15-27", "08-22-26", "12-01-26"]
+        assert sorted(keys, key=day_sort_key) == ["08-22-26", "12-01-26", "01-15-27"]
+
+    def test_undated_keys_sort_last(self):
+        """A filename-keyed report goes to the end, not into the date order."""
+        keys = ["SetupReport_June", "08-22-26", "AnotherFile"]
+        assert sorted(keys, key=day_sort_key) == [
+            "08-22-26", "AnotherFile", "SetupReport_June"
+        ]

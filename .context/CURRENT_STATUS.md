@@ -4,15 +4,44 @@
 
 ## Current Position
 
-**Phase**: Timeline legibility, and groundwork for a multi-day view (ADR-009, ADR-010)
-**Subphase**: Built and verified against rendered output; awaiting an on-display check
+**Phase**: Multi-day timeline (ADR-011), on the legibility work of ADR-009/010
+**Subphase**: Built and verified against the real weekend exports; awaiting an on-display check
 **Progress**: The app now reads the events database's `Daily Events - Excel`
 export alongside Daily Setup Report PDFs, dispatched by file extension. 87/87
 tests pass, including all 56 pre-existing ones **unedited**. Docs and ADR-008
 are current. Pending: a real-export soak beyond the single sample, an
 on-display GUI check, and the exe rebuild that was already outstanding.
 
-## Recently Completed (2026-08-22 — date on the Y axis)
+## Recently Completed (2026-08-22 — multi-day timeline)
+
+- **A weekend now reads as one chart** (ADR-011). The database exports one day
+  per file, so several files stack into one timeline, oldest on top, separated
+  by a rule, sharing one time-of-day axis.
+- **Events carry their own date.** `create_gantt_rows` emits a `Date` key; the
+  Excel reader resolves it per row from the `Event Start` cell (a full datetime
+  in real exports), falling back to the `Day` column then the sheet title. The
+  PDF path falls back to the processor single `report_date`.
+- **Datasets are keyed by date, not by file.** `_on_gantt_ready` splits rows
+  with `group_rows_by_day`, so one export holding two sheets lands as two
+  blocks exactly like two files — and the order files are dropped in does not
+  matter. A repeated date replaces (right for a re-pull) but now logs a warning.
+- **The selector became a Day filter** with an "All days" entry, default when
+  more than one day is loaded. Only an *explicit* choice survives new data
+  (`_chosen_day`, set from a signal that repopulation blocks) — otherwise a
+  second file arriving mid-run leaves you pinned to day one.
+- **The clock crosses only its own day** (`_place_clock`). This also fixed the
+  past-midnight case: between midnight and the start of the axis the marker
+  rides *yesterday* block on the extension past 24:00 — the schedule actually
+  running — rather than the small hours of today, which the axis never shows.
+- **Verified against the two real exports** (`DailyEventsExcel.xlsx` = Sat Aug
+  22, `(2).xlsx` = Sun Aug 23): 27 checks covering block bounds, ordering,
+  filtering, live arrival of a second day, and five clock placements around
+  midnight via a patched clock. Unit tests 87 → 98.
+- **Known gaps**: the X axis is the union across days, so one overnight event
+  extends the axis for every day; the results screen still counts files, not
+  days; two sources covering the same date replace rather than merge.
+
+## Earlier Completed (2026-08-22 — date on the Y axis)
 
 - **The Y axis names the day, not the room** (ADR-010). ADR-009 put the room on
   the bar, which made the per-event axis labels a second copy of the same fact
@@ -319,6 +348,8 @@ build_release.bat            [status: new — builds + zips the portable release
 
 ## Recent Decisions
 
+- **2026-08-22**: Multiple days stack on one timeline, keyed by the date the
+  events carry rather than by the file they came from (ADR-011)
 - **2026-08-22**: The Gantt Y axis names the day, grouped so a second day is a
   second entry rather than an axis rewrite (ADR-010)
 - **2026-08-22**: Inside a bar the room outranks the time range when only one
