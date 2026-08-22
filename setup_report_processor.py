@@ -2,8 +2,20 @@
 """
 Daily Setup Report Processor
 ============================
-Extracts event information from Daily Setup Report PDFs and creates
-chronologically ordered schedules in Excel/CSV format.
+Turns an event report into a chronologically ordered schedule in Excel/CSV
+format.
+
+Two report formats are supported, chosen automatically by file extension via
+``create_processor()``:
+
+* **Daily Setup Report PDF** — parsed with pdfplumber and regex
+  (``SetupReportProcessor``)
+* **Daily Events Excel export** — read straight from the database's own
+  spreadsheet (``daily_events_excel.DailyEventsExcelProcessor``)
+
+Both produce the same event records, so everything downstream — location
+filtering, schedule rows, sorting, output, and the Gantt feed — is shared by
+``EventScheduleProcessor``.
 
 Author: Production Script
 Version: 1.0.0
@@ -70,27 +82,46 @@ DEFAULT_LOCATION_CONFIG = [
 ]
 
 
-class SetupReportProcessor:
-    """Process Daily Setup Report PDFs and extract event schedules."""
+class EventScheduleProcessor:
+    """
+    Shared pipeline for turning a report file into a sorted event schedule.
 
-    def __init__(self, pdf_path: str, config_path: Optional[str] = None):
+    Subclasses own everything that depends on the file format: validating the
+    extension, reading the report date, and producing the event list.
+    Everything after that point is identical for every source and lives here.
+
+    Subclass contract:
+        ``SOURCE_SUFFIXES`` — accepted extensions, lowercase, with the dot
+        ``SOURCE_LABEL`` — format name used in error messages
+        ``_collect_events()`` — return the list of event dicts
+        ``extract_report_date()`` — return "MM-DD-YY" or None
+    """
+
+    #: Accepted file extensions (lowercase, including the leading dot).
+    SOURCE_SUFFIXES: tuple = ()
+
+    #: Name of the report format, used in error messages.
+    SOURCE_LABEL: str = "report"
+
+    def __init__(self, source_path: str, config_path: Optional[str] = None):
         """
         Initialize the processor.
 
         Args:
-            pdf_path: Path to the PDF file to process
+            source_path: Path to the report file to process
             config_path: Optional path to location config JSON file
 
         Raises:
-            FileNotFoundError: If the PDF file does not exist
-            ValueError: If the file is not a PDF
+            FileNotFoundError: If the report file does not exist
+            ValueError: If the file is not a format this processor reads
         """
-        self.pdf_path = Path(pdf_path)
-        if not self.pdf_path.exists():
-            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+        self.source_path = Path(source_path)
+        if not self.source_path.exists():
+            raise FileNotFoundError(
+                f"{self.SOURCE_LABEL} file not found: {source_path}"
+            )
 
-        if self.pdf_path.suffix.lower() != ".pdf":
-            raise ValueError(f"Expected PDF file, got: {self.pdf_path.suffix}")
+        self._validate_suffix()
 
         # Load location configuration
         self._load_location_config(config_path)
@@ -103,9 +134,46 @@ class SetupReportProcessor:
         if self.report_date:
             logger.info(f"Extracted report date: {self.report_date}")
         else:
-            logger.warning("Could not extract report date from PDF, will use PDF filename")
+            logger.warning(
+                f"Could not extract report date from {self.source_path.name}, "
+                "will use the filename"
+            )
 
-        logger.info(f"Initialized processor for: {self.pdf_path}")
+        logger.info(f"Initialized processor for: {self.source_path}")
+
+    def _validate_suffix(self) -> None:
+        """
+        Check the file extension against SOURCE_SUFFIXES.
+
+        Raises:
+            ValueError: If the extension is not one this processor reads
+        """
+        if self.source_path.suffix.lower() not in self.SOURCE_SUFFIXES:
+            raise ValueError(
+                f"Expected {self.SOURCE_LABEL} file, got: {self.source_path.suffix}"
+            )
+
+    def _collect_events(self) -> List[Dict[str, str]]:
+        """
+        Read the source file and return its event records.
+
+        Each record is a dict with ``event_name``, ``location``, ``setup_time``
+        and ``closing_time``. Locations are already filtered against the
+        whitelist by the time they are returned.
+
+        Returns:
+            List of event dictionaries
+        """
+        raise NotImplementedError
+
+    def extract_report_date(self) -> Optional[str]:
+        """
+        Extract the report's date, formatted as MM-DD-YY.
+
+        Returns:
+            Formatted date string (e.g., "01-07-26") or None if not found
+        """
+        raise NotImplementedError
 
     def _load_location_config(self, config_path: Optional[str] = None) -> None:
         """
@@ -156,6 +224,315 @@ class SetupReportProcessor:
 
         # Sort whitelist longest-first for greedy matching
         self._location_whitelist = sorted(enabled, key=len, reverse=True)
+
+    def get_output_basename(self) -> str:
+        """
+        Get the base name for output files.
+
+        Returns the report date in MM-DD-YY format if available,
+        otherwise falls back to the source filename stem.
+
+        Returns:
+            Base filename string (either date or source file name)
+
+        Example:
+            >>> processor.report_date = "01-07-26"
+            >>> processor.get_output_basename()
+            '01-07-26'
+            >>> processor.report_date = None
+            >>> processor.get_output_basename()
+            'daily_report'
+        """
+        return self.report_date if self.report_date else self.source_path.stem
+
+    def parse_time(self, time_str: str) -> Optional[datetime]:
+        """
+        Parse time string to datetime object for sorting.
+
+        Args:
+            time_str: Time string like "7:30 AM", "12:00 PM", or "no setup time defined"
+
+        Returns:
+            datetime object or None if parsing fails
+        """
+        # Handle special case
+        if "no setup time defined" in time_str.lower():
+            return None
+
+        try:
+            # Try standard format
+            return datetime.strptime(time_str.strip(), "%I:%M %p")
+        except ValueError:
+            try:
+                # Try without space
+                return datetime.strptime(time_str.strip(), "%I:%M%p")
+            except ValueError:
+                logger.warning(f"Could not parse time: {time_str}")
+                return None
+
+    def convert_to_24hour(self, time_str: str, reference_hour: int = 0) -> Optional[str]:
+        """
+        Convert 12-hour time to 24-hour format with midnight crossing support.
+
+        Args:
+            time_str: Time like "1:15 AM", "11:30 PM"
+            reference_hour: Previous event hour (0-23) for midnight crossing detection
+
+        Returns:
+            24-hour time like "01:15" or "25:00" (for next-day times)
+
+        Example:
+            >>> processor.convert_to_24hour("1:15 AM")
+            '01:15'
+            >>> processor.convert_to_24hour("2:00 AM", reference_hour=23)
+            '26:00'  # Next day notation for midnight crossing
+        """
+        dt = self.parse_time(time_str)
+        if not dt:
+            return None
+
+        hour_24 = dt.hour
+
+        # Handle midnight crossing: if this time is much earlier than reference,
+        # it's likely the next day (e.g., setup at 11 PM, closing at 2 AM)
+        if reference_hour >= 18 and hour_24 <= 6:  # Late night → early morning
+            hour_24 += 24  # Use next-day notation: 25:00, 26:00, etc.
+
+        return f"{hour_24:02d}:{dt.minute:02d}"
+
+    def _match_whitelist_location(self, raw_location: str) -> Optional[str]:
+        """
+        Match a raw extracted location against the enabled whitelist.
+
+        Checks if the raw location starts with any whitelist entry.
+        Returns the exact whitelist entry as the canonical location name.
+
+        Args:
+            raw_location: Raw location string extracted from PDF
+
+        Returns:
+            The matched whitelist location name, or None if no match
+        """
+        # Check whitelist (startswith matching)
+        # Whitelist is sorted longest-first, so most specific match wins
+        for location_name in self._location_whitelist:
+            if raw_location.startswith(location_name):
+                return location_name
+
+        return None
+
+    def create_schedule_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """
+        Create two rows for each event (Setup Ready By and Closing).
+
+        Args:
+            events: List of event dictionaries
+
+        Returns:
+            List of row dictionaries for the schedule
+        """
+        logger.info("Creating schedule rows...")
+        rows = []
+
+        for event in events:
+            # Setup Ready By row
+            rows.append({
+                "Event Name": event["event_name"],
+                "Location": event["location"],
+                "Activity": "Setup Ready By",
+                "Time": event["setup_time"]
+            })
+
+            # Closing row
+            rows.append({
+                "Event Name": event["event_name"],
+                "Location": event["location"],
+                "Activity": "Closing",
+                "Time": event["closing_time"]
+            })
+
+        logger.info(f"Created {len(rows)} schedule rows from {len(events)} events")
+        return rows
+
+    def create_gantt_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """
+        Create single-row events for the Gantt chart.
+        Each event becomes: EventName, Location, StartTime (24h), EndTime (24h)
+
+        Args:
+            events: List of event dictionaries with setup_time and closing_time
+
+        Returns:
+            List of row dictionaries with Location, StartTime, EndTime
+
+        Example:
+            >>> events = [{
+            ...     "event_name": "Test Event",
+            ...     "location": "UC 1227",
+            ...     "setup_time": "1:30 AM",
+            ...     "closing_time": "2:00 PM"
+            ... }]
+            >>> rows = processor.create_gantt_rows(events)
+            >>> rows[0]
+            {'EventName': 'Test Event', 'Location': 'UC 1227',
+             'StartTime': '01:30', 'EndTime': '14:00'}
+        """
+        logger.info("Creating Gantt event rows...")
+        rows = []
+
+        for event in events:
+            # Parse setup time to get reference hour for midnight crossing
+            setup_dt = self.parse_time(event["setup_time"])
+            if not setup_dt:
+                logger.warning(f"Skipping event '{event['event_name']}' - invalid setup time")
+                continue
+
+            start_time_24h = self.convert_to_24hour(event["setup_time"])
+            end_time_24h = self.convert_to_24hour(event["closing_time"], setup_dt.hour)
+
+            if not start_time_24h or not end_time_24h:
+                logger.warning(f"Skipping event '{event['event_name']}' - time conversion failed")
+                continue
+
+            rows.append({
+                "EventName": event.get("event_name", ""),
+                "Location": event["location"],
+                "StartTime": start_time_24h,
+                "EndTime": end_time_24h
+            })
+
+        logger.info(f"Created {len(rows)} Gantt event rows from {len(events)} events")
+        return rows
+
+    def sort_chronologically(self, rows: List[Dict[str, str]]) -> pd.DataFrame:
+        """
+        Sort rows chronologically by time and create DataFrame.
+
+        Args:
+            rows: List of row dictionaries
+
+        Returns:
+            Sorted pandas DataFrame
+        """
+        logger.info("Sorting rows chronologically...")
+
+        if not rows:
+            logger.warning("No rows to sort")
+            return pd.DataFrame(columns=["Event Name", "Location", "Activity", "Time"])
+
+        df = pd.DataFrame(rows)
+
+        # Create a datetime column for sorting
+        df["_sort_time"] = df["Time"].apply(self.parse_time)
+
+        # Log and remove rows where time couldn't be parsed
+        invalid_mask = df["_sort_time"].isna()
+        invalid_count = invalid_mask.sum()
+
+        if invalid_count > 0:
+            logger.warning(f"Found {invalid_count} rows with invalid times:")
+            for idx, row in df[invalid_mask].iterrows():
+                logger.warning(f"  - Event: '{row['Event Name']}', Activity: {row['Activity']}, Time: '{row['Time']}'")
+            df = df.dropna(subset=["_sort_time"])
+
+        # Sort by time
+        df = df.sort_values("_sort_time")
+
+        # Drop the sorting column
+        df = df.drop(columns=["_sort_time"])
+
+        # Reset index
+        df = df.reset_index(drop=True)
+
+        logger.info(f"Final schedule has {len(df)} rows")
+        return df
+
+    def process(self) -> pd.DataFrame:
+        """
+        Main processing method - orchestrates the entire workflow.
+
+        Returns:
+            Processed DataFrame with schedule
+        """
+        logger.info("="*60)
+        logger.info("Starting report processing")
+        logger.info("="*60)
+
+        # Read events from the source file (format-specific)
+        events = self._collect_events()
+        self._events = events  # Store for Gantt chart
+
+        if not events:
+            logger.warning(f"No valid events found in {self.source_path.name}")
+            return pd.DataFrame(columns=["Event Name", "Location", "Activity", "Time"])
+
+        # Create schedule rows
+        rows = self.create_schedule_rows(events)
+
+        # Sort chronologically
+        df = self.sort_chronologically(rows)
+
+        logger.info("="*60)
+        logger.info("Processing complete!")
+        logger.info("="*60)
+
+        return df
+
+    def save_to_excel(self, df: pd.DataFrame, output_path: Optional[str] = None):
+        """
+        Save DataFrame to Excel file.
+
+        Args:
+            df: DataFrame to save
+            output_path: Output file path (auto-generated if None)
+        """
+        if output_path is None:
+            output_path = self.get_output_basename() + "_schedule.xlsx"
+
+        output_path = Path(output_path)
+
+        try:
+            df.to_excel(output_path, index=False, engine="openpyxl")
+            logger.info(f"Saved Excel file: {output_path}")
+        except Exception as e:
+            logger.error(f"Error saving Excel file: {e}")
+            raise
+
+    def save_to_csv(self, df: pd.DataFrame, output_path: Optional[str] = None):
+        """
+        Save DataFrame to CSV file.
+
+        Args:
+            df: DataFrame to save
+            output_path: Output file path (auto-generated if None)
+        """
+        if output_path is None:
+            output_path = self.get_output_basename() + "_schedule.csv"
+
+        output_path = Path(output_path)
+
+        try:
+            df.to_csv(output_path, index=False)
+            logger.info(f"Saved CSV file: {output_path}")
+        except Exception as e:
+            logger.error(f"Error saving CSV file: {e}")
+            raise
+
+
+class SetupReportProcessor(EventScheduleProcessor):
+    """Process Daily Setup Report PDFs and extract event schedules."""
+
+    SOURCE_SUFFIXES = (".pdf",)
+    SOURCE_LABEL = "PDF"
+
+    @property
+    def pdf_path(self) -> Path:
+        """The PDF being processed — an alias for the generic source_path."""
+        return self.source_path
+
+    def _collect_events(self) -> List[Dict[str, str]]:
+        """Extract events from the PDF's text (see ADR-001 and ADR-003)."""
+        return self.extract_events(self.extract_text_from_pdf())
 
     def extract_text_from_pdf(self) -> str:
         """
@@ -236,81 +613,6 @@ class SetupReportProcessor:
             logger.warning(f"Error extracting report date: {e}")
             return None
 
-    def get_output_basename(self) -> str:
-        """
-        Get the base name for output files.
-
-        Returns the report date in MM-DD-YY format if available,
-        otherwise falls back to the PDF filename stem.
-
-        Returns:
-            Base filename string (either date or PDF name)
-
-        Example:
-            >>> processor.report_date = "01-07-26"
-            >>> processor.get_output_basename()
-            '01-07-26'
-            >>> processor.report_date = None
-            >>> processor.get_output_basename()
-            'daily_report'
-        """
-        return self.report_date if self.report_date else self.pdf_path.stem
-
-    def parse_time(self, time_str: str) -> Optional[datetime]:
-        """
-        Parse time string to datetime object for sorting.
-
-        Args:
-            time_str: Time string like "7:30 AM", "12:00 PM", or "no setup time defined"
-
-        Returns:
-            datetime object or None if parsing fails
-        """
-        # Handle special case
-        if "no setup time defined" in time_str.lower():
-            return None
-
-        try:
-            # Try standard format
-            return datetime.strptime(time_str.strip(), "%I:%M %p")
-        except ValueError:
-            try:
-                # Try without space
-                return datetime.strptime(time_str.strip(), "%I:%M%p")
-            except ValueError:
-                logger.warning(f"Could not parse time: {time_str}")
-                return None
-
-    def convert_to_24hour(self, time_str: str, reference_hour: int = 0) -> Optional[str]:
-        """
-        Convert 12-hour time to 24-hour format with midnight crossing support.
-
-        Args:
-            time_str: Time like "1:15 AM", "11:30 PM"
-            reference_hour: Previous event hour (0-23) for midnight crossing detection
-
-        Returns:
-            24-hour time like "01:15" or "25:00" (for next-day times)
-
-        Example:
-            >>> processor.convert_to_24hour("1:15 AM")
-            '01:15'
-            >>> processor.convert_to_24hour("2:00 AM", reference_hour=23)
-            '26:00'  # Next day notation for midnight crossing
-        """
-        dt = self.parse_time(time_str)
-        if not dt:
-            return None
-
-        hour_24 = dt.hour
-
-        # Handle midnight crossing: if this time is much earlier than reference,
-        # it's likely the next day (e.g., setup at 11 PM, closing at 2 AM)
-        if reference_hour >= 18 and hour_24 <= 6:  # Late night → early morning
-            hour_24 += 24  # Use next-day notation: 25:00, 26:00, etc.
-
-        return f"{hour_24:02d}:{dt.minute:02d}"
-
     def extract_events(self, text: str) -> List[Dict[str, str]]:
         """
         Extract event information from PDF text.
@@ -346,7 +648,7 @@ class SetupReportProcessor:
         excluded_count = total_blocks - len(events)
         logger.info(f"Found {len(events)} valid events in PDF (excluded {excluded_count} events)")
         return events
-    
+
     def _extract_setup_time(self, block: str) -> Optional[str]:
         """
         Extract setup time from event block.
@@ -495,246 +797,76 @@ class SetupReportProcessor:
             "setup_time": setup_time,
             "closing_time": event_end
         }
-    
-    def _match_whitelist_location(self, raw_location: str) -> Optional[str]:
-        """
-        Match a raw extracted location against the enabled whitelist.
 
-        Checks if the raw location starts with any whitelist entry.
-        Returns the exact whitelist entry as the canonical location name.
 
-        Args:
-            raw_location: Raw location string extracted from PDF
+# Report formats the app can read, in the order they are offered to the user.
+SUPPORTED_SUFFIXES = (".pdf", ".xlsx")
 
-        Returns:
-            The matched whitelist location name, or None if no match
-        """
-        # Check whitelist (startswith matching)
-        # Whitelist is sorted longest-first, so most specific match wins
-        for location_name in self._location_whitelist:
-            if raw_location.startswith(location_name):
-                return location_name
 
-        return None
+def create_processor(
+    path: str, config_path: Optional[str] = None
+) -> EventScheduleProcessor:
+    """
+    Build the processor that matches a report file, chosen by its extension.
 
-    def create_schedule_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """
-        Create two rows for each event (Setup Ready By and Closing).
+    Args:
+        path: Path to the report file (.pdf or .xlsx)
+        config_path: Optional path to location config JSON file
 
-        Args:
-            events: List of event dictionaries
+    Returns:
+        A ready-to-use EventScheduleProcessor subclass instance
 
-        Returns:
-            List of row dictionaries for the schedule
-        """
-        logger.info("Creating schedule rows...")
-        rows = []
+    Raises:
+        ValueError: If the extension is not a supported report format
+        FileNotFoundError: If the file does not exist
 
-        for event in events:
-            # Setup Ready By row
-            rows.append({
-                "Event Name": event["event_name"],
-                "Location": event["location"],
-                "Activity": "Setup Ready By",
-                "Time": event["setup_time"]
-            })
+    Example:
+        >>> create_processor("report.pdf").__class__.__name__
+        'SetupReportProcessor'
+        >>> create_processor("DailyEventsExcel.xlsx").__class__.__name__
+        'DailyEventsExcelProcessor'
+    """
+    suffix = Path(path).suffix.lower()
 
-            # Closing row
-            rows.append({
-                "Event Name": event["event_name"],
-                "Location": event["location"],
-                "Activity": "Closing",
-                "Time": event["closing_time"]
-            })
+    if suffix == ".pdf":
+        return SetupReportProcessor(path, config_path=config_path)
 
-        logger.info(f"Created {len(rows)} schedule rows from {len(events)} events")
-        return rows
+    if suffix == ".xlsx":
+        # Imported here, not at module scope: daily_events_excel imports
+        # EventScheduleProcessor from this module, so a top-level import
+        # would be circular.
+        from daily_events_excel import DailyEventsExcelProcessor
 
-    def create_gantt_rows(self, events: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """
-        Create single-row events for the Gantt chart.
-        Each event becomes: EventName, Location, StartTime (24h), EndTime (24h)
+        return DailyEventsExcelProcessor(path, config_path=config_path)
 
-        Args:
-            events: List of event dictionaries with setup_time and closing_time
-
-        Returns:
-            List of row dictionaries with Location, StartTime, EndTime
-
-        Example:
-            >>> events = [{
-            ...     "event_name": "Test Event",
-            ...     "location": "UC 1227",
-            ...     "setup_time": "1:30 AM",
-            ...     "closing_time": "2:00 PM"
-            ... }]
-            >>> rows = processor.create_gantt_rows(events)
-            >>> rows[0]
-            {'EventName': 'Test Event', 'Location': 'UC 1227',
-             'StartTime': '01:30', 'EndTime': '14:00'}
-        """
-        logger.info("Creating Gantt event rows...")
-        rows = []
-
-        for event in events:
-            # Parse setup time to get reference hour for midnight crossing
-            setup_dt = self.parse_time(event["setup_time"])
-            if not setup_dt:
-                logger.warning(f"Skipping event '{event['event_name']}' - invalid setup time")
-                continue
-
-            start_time_24h = self.convert_to_24hour(event["setup_time"])
-            end_time_24h = self.convert_to_24hour(event["closing_time"], setup_dt.hour)
-
-            if not start_time_24h or not end_time_24h:
-                logger.warning(f"Skipping event '{event['event_name']}' - time conversion failed")
-                continue
-
-            rows.append({
-                "EventName": event.get("event_name", ""),
-                "Location": event["location"],
-                "StartTime": start_time_24h,
-                "EndTime": end_time_24h
-            })
-
-        logger.info(f"Created {len(rows)} Gantt event rows from {len(events)} events")
-        return rows
-
-    def sort_chronologically(self, rows: List[Dict[str, str]]) -> pd.DataFrame:
-        """
-        Sort rows chronologically by time and create DataFrame.
-
-        Args:
-            rows: List of row dictionaries
-
-        Returns:
-            Sorted pandas DataFrame
-        """
-        logger.info("Sorting rows chronologically...")
-
-        if not rows:
-            logger.warning("No rows to sort")
-            return pd.DataFrame(columns=["Event Name", "Location", "Activity", "Time"])
-
-        df = pd.DataFrame(rows)
-
-        # Create a datetime column for sorting
-        df["_sort_time"] = df["Time"].apply(self.parse_time)
-
-        # Log and remove rows where time couldn't be parsed
-        invalid_mask = df["_sort_time"].isna()
-        invalid_count = invalid_mask.sum()
-
-        if invalid_count > 0:
-            logger.warning(f"Found {invalid_count} rows with invalid times:")
-            for idx, row in df[invalid_mask].iterrows():
-                logger.warning(f"  - Event: '{row['Event Name']}', Activity: {row['Activity']}, Time: '{row['Time']}'")
-            df = df.dropna(subset=["_sort_time"])
-
-        # Sort by time
-        df = df.sort_values("_sort_time")
-
-        # Drop the sorting column
-        df = df.drop(columns=["_sort_time"])
-
-        # Reset index
-        df = df.reset_index(drop=True)
-
-        logger.info(f"Final schedule has {len(df)} rows")
-        return df
-    
-    def process(self) -> pd.DataFrame:
-        """
-        Main processing method - orchestrates the entire workflow.
-
-        Returns:
-            Processed DataFrame with schedule
-        """
-        logger.info("="*60)
-        logger.info("Starting report processing")
-        logger.info("="*60)
-
-        # Extract text from PDF
-        text = self.extract_text_from_pdf()
-
-        # Parse events
-        events = self.extract_events(text)
-        self._events = events  # Store for Gantt chart
-
-        if not events:
-            logger.warning("No valid events found in the PDF")
-            return pd.DataFrame(columns=["Event Name", "Location", "Activity", "Time"])
-
-        # Create schedule rows
-        rows = self.create_schedule_rows(events)
-
-        # Sort chronologically
-        df = self.sort_chronologically(rows)
-
-        logger.info("="*60)
-        logger.info("Processing complete!")
-        logger.info("="*60)
-
-        return df
-
-    def save_to_excel(self, df: pd.DataFrame, output_path: Optional[str] = None):
-        """
-        Save DataFrame to Excel file.
-
-        Args:
-            df: DataFrame to save
-            output_path: Output file path (auto-generated if None)
-        """
-        if output_path is None:
-            output_path = self.get_output_basename() + "_schedule.xlsx"
-
-        output_path = Path(output_path)
-
-        try:
-            df.to_excel(output_path, index=False, engine="openpyxl")
-            logger.info(f"Saved Excel file: {output_path}")
-        except Exception as e:
-            logger.error(f"Error saving Excel file: {e}")
-            raise
-
-    def save_to_csv(self, df: pd.DataFrame, output_path: Optional[str] = None):
-        """
-        Save DataFrame to CSV file.
-
-        Args:
-            df: DataFrame to save
-            output_path: Output file path (auto-generated if None)
-        """
-        if output_path is None:
-            output_path = self.get_output_basename() + "_schedule.csv"
-
-        output_path = Path(output_path)
-
-        try:
-            df.to_csv(output_path, index=False)
-            logger.info(f"Saved CSV file: {output_path}")
-        except Exception as e:
-            logger.error(f"Error saving CSV file: {e}")
-            raise
+    supported = ", ".join(SUPPORTED_SUFFIXES)
+    raise ValueError(
+        f"Unsupported report type: {suffix or path!r} "
+        f"(expected one of: {supported})"
+    )
 
 
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
-        description="Extract event schedules from Daily Setup Report PDFs",
+        description=(
+            "Extract event schedules from Daily Setup Report PDFs or "
+            "Daily Events Excel exports"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   %(prog)s report.pdf
+  %(prog)s DailyEventsExcel.xlsx
   %(prog)s report.pdf -o schedule.xlsx
-  %(prog)s report.pdf --csv --excel
+  %(prog)s DailyEventsExcel.xlsx --csv --excel
   %(prog)s report.pdf --output custom_name.xlsx --verbose
         """
     )
 
     parser.add_argument(
-        "pdf_file",
-        help="Path to the PDF file to process"
+        "report_file",
+        help="Path to the report to process (.pdf or .xlsx)"
     )
 
     parser.add_argument(
@@ -781,10 +913,10 @@ Examples:
         logger.setLevel(logging.DEBUG)
 
     try:
-        # Initialize processor
-        processor = SetupReportProcessor(args.pdf_file, config_path=args.config)
+        # Build the processor that matches the file type
+        processor = create_processor(args.report_file, config_path=args.config)
 
-        # Process the PDF
+        # Process the report
         df = processor.process()
 
         # Display summary

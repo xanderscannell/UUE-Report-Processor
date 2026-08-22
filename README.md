@@ -1,10 +1,10 @@
 # Daily Setup Report Processor
 
-A Python application that extracts event schedules from Daily Setup Report PDFs and generates chronologically sorted Excel/CSV outputs, with both CLI and GUI interfaces.
+A Python application that extracts event schedules from **Daily Setup Report PDFs** or the events database's **Daily Events Excel export** and generates chronologically sorted Excel/CSV outputs, with both CLI and GUI interfaces.
 
 ## Features
 
-- **Automated PDF Processing**: Extracts event data from Daily Setup Report PDFs
+- **Two Event Sources**: Reads Daily Setup Report PDFs *or* Daily Events Excel exports — the type is detected from the file extension, and a single batch can mix both
 - **Excel & CSV Output**: Generates professional schedule files
 - **Interactive Gantt Chart**: Built-in timeline view of the day's events with a live current-time marker
 - **Smart Location Filtering**: Configurable whitelist of venue locations
@@ -44,7 +44,7 @@ The window walks you through one step at a time — it starts as a drop target,
 becomes a work queue once files are added, and ends on a summary of what was
 produced.
 
-1. **Add files**: Drop PDFs anywhere in the window, or click the drop zone to browse
+1. **Add files**: Drop PDFs or Excel exports anywhere in the window, or click the drop zone to browse
 2. **Choose output**: Toggle **Excel .xlsx** and/or **CSV .csv** — or leave both off
    for a timeline-only run (see below)
 3. **Process**: Click **Process N files** — each file shows live status as it runs
@@ -74,7 +74,7 @@ Click **View Timeline** on the results screen to open the day's schedule as a Ga
 - Time-of-day axis covering 6 AM to midnight, widened automatically if events fall outside it
 - A dashed line marks the current time, refreshing every minute
 - Hover a bar for the event name, location, and exact times
-- Process multiple PDFs to get a report selector for switching between days
+- Process multiple reports to get a report selector for switching between days
 
 To have it open automatically after every run, enable **Settings → Open timeline
 when finished**.
@@ -136,6 +136,9 @@ For automation, scripting, or non-Windows systems, use the command-line interfac
 # Process a PDF (generates Excel by default)
 python setup_report_processor.py report.pdf
 
+# Process a Daily Events Excel export — same options, same output
+python setup_report_processor.py DailyEventsExcel.xlsx
+
 # Specify custom output name
 python setup_report_processor.py report.pdf -o my_schedule.xlsx
 
@@ -153,10 +156,10 @@ python setup_report_processor.py report.pdf --verbose
 
 ```
 usage: setup_report_processor.py [-h] [-o OUTPUT] [--excel] [--csv]
-                                  [--no-excel] [-v] pdf_file
+                                  [--no-excel] [-v] report_file
 
 positional arguments:
-  pdf_file              Path to the PDF file to process
+  report_file           Path to the report to process (.pdf or .xlsx)
 
 optional arguments:
   -h, --help            Show this help message and exit
@@ -170,12 +173,22 @@ optional arguments:
 
 ## How It Works
 
-1. **Extract Text**: Reads all text from the PDF using pdfplumber
-2. **Parse Events**: Identifies event blocks and extracts event name, location, setup time, and closing time
+1. **Pick a reader**: The file extension decides — `.pdf` uses the PDF parser,
+   `.xlsx` uses the database export reader
+2. **Read events**, which differs by source but produces the same records:
+   - *PDF*: extracts text with pdfplumber, splits it into event blocks, and
+     pulls out the event name, location, setup time, and closing time
+   - *Excel*: reads one row per booking from each `Event List` sheet, taking the
+     event name, `Location`, `Event Start`, and `Event End`
 3. **Filter by Location**: Keeps only events at locations enabled in the whitelist
 4. **Create Schedule**: Generates two rows per event (Setup Ready By + Closing)
 5. **Sort Chronologically**: Orders all entries by time
 6. **Export**: Saves to Excel and/or CSV, and/or displays the Gantt chart
+
+> **A note on setup times.** The Excel export has no setup-start column, so for
+> that source **Setup Ready By is the event's own start time**. A schedule built
+> from an export therefore carries no setup lead time, and its Setup Ready By
+> will be later than the same event's row from a PDF.
 
 ## Output Format
 
@@ -248,7 +261,8 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 
 ```
 .
-├── setup_report_processor.py     # Core processor (CLI + library)
+├── setup_report_processor.py     # Shared pipeline + PDF reader (CLI + library)
+├── daily_events_excel.py         # Daily Events Excel export reader
 ├── gui_wrapper.py                # GUI application (PySide6)
 ├── gui_components/               # GUI component modules
 │   ├── settings.py               #   GUI defaults and Gantt config
@@ -263,7 +277,7 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 │   └── gantt_window.py           #   Embedded Gantt chart
 ├── location_config.json          # Location whitelist configuration
 ├── UUE.ico                       # Application icon
-├── test_setup_report_processor.py # Test suite (56 tests)
+├── test_setup_report_processor.py # Test suite (87 tests)
 ├── requirements.txt              # Dependencies
 ├── build_release.bat             # Builds + zips the portable release
 ├── CHANGELOG.md                  # Release history
@@ -275,7 +289,7 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 **Core**:
 - pdfplumber (PDF text extraction)
 - pandas (data manipulation)
-- openpyxl (Excel file generation)
+- openpyxl (Excel export reading + file generation)
 
 **GUI**:
 - PySide6 (Qt desktop interface)
@@ -290,6 +304,14 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 - Run with `--verbose` to see which events are being filtered and why
 - Check the location whitelist — locations may be disabled
 - The PDF format may have changed
+- For an Excel export, note it covers **all** campus locations, so most rows are
+  expected to be filtered out. Add the rooms you want via
+  **Settings → Location Whitelist…**
+
+### An Excel export fails with "missing required column"
+- The report definition changed. The reader needs `Event Start`, `Event End`,
+  `Event Name` and `Location`; re-add whichever the message names
+- Legacy `.xls` workbooks cannot be read — re-save the report as `.xlsx`
 
 ### Missing events in output
 - Expand **Details** at the bottom of the window, or check the log file, for "Skipping event" or "not in whitelist" messages
@@ -306,7 +328,7 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
-The current release is **v4.1.0**.
+The current release is **v4.2.0**.
 
 ## License
 

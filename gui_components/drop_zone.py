@@ -1,7 +1,7 @@
 """
 Drag-and-Drop Widget
 =====================
-Qt widget that accepts PDF file drops, with click-to-browse fallback.
+Qt widget that accepts report file drops, with click-to-browse fallback.
 
 Two presentations share one implementation:
 
@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from setup_report_processor import SUPPORTED_SUFFIXES
+
 from .settings import DIMENSIONS
 from .style import RADIUS, SPACE, TYPE, tokens
 from .widgets import DropIcon
@@ -29,11 +31,11 @@ from .widgets import DropIcon
 
 class DragDropZone(QFrame):
     """
-    Drop target for PDF files.
+    Drop target for report files (see SUPPORTED_SUFFIXES).
 
     Signals:
-        files_added: list[Path] of accepted PDFs
-        files_rejected: list[Path] of dropped files that were not PDFs
+        files_added: list[Path] of accepted reports
+        files_rejected: list[Path] of dropped files of another type
     """
 
     files_added = Signal(list)
@@ -95,7 +97,9 @@ class DragDropZone(QFrame):
             layout.addStretch()
 
     def _default_title(self) -> str:
-        return "Add more PDFs" if self.compact else "Drop your Daily Setup Report PDFs here"
+        if self.compact:
+            return "Add more reports"
+        return "Drop your event reports here"
 
     # -- styling ---------------------------------------------------------
     def refresh_style(self):
@@ -175,32 +179,33 @@ class DragDropZone(QFrame):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             files, _ = QFileDialog.getOpenFileNames(
-                self, "Select Daily Setup Report PDFs", "",
-                "PDF files (*.pdf);;All files (*.*)",
+                self, "Select event reports", "",
+                "Reports (*.pdf *.xlsx);;PDF files (*.pdf);;Excel files (*.xlsx);;All files (*.*)",
             )
             self.handle_paths([Path(f) for f in files])
         super().mousePressEvent(event)
 
     # -- helpers ---------------------------------------------------------
     def handle_paths(self, paths: List[Path]):
-        """Split paths into PDFs and rejects, then emit the matching signals."""
-        pdfs, rejected = self._partition(paths)
-        if pdfs:
-            self.files_added.emit(pdfs)
+        """Split paths into reports and rejects, then emit the signals."""
+        reports, rejected = self._partition(paths)
+        if reports:
+            self.files_added.emit(reports)
         if rejected:
             self.files_rejected.emit(rejected)
             self._flash(
-                "Only PDF files can be processed"
-                if not pdfs
-                else f"Skipped {len(rejected)} non-PDF file(s)"
+                "Only PDF and Excel reports can be processed"
+                if not reports
+                else f"Skipped {len(rejected)} unsupported file(s)"
             )
 
     @staticmethod
     def _partition(paths) -> Tuple[List[Path], List[Path]]:
-        pdfs, rejected = [], []
+        """Split paths by whether the processor can read them."""
+        reports, rejected = [], []
         for p in paths:
-            if p.is_file() and p.suffix.lower() == ".pdf":
-                pdfs.append(p)
+            if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES:
+                reports.append(p)
             else:
                 rejected.append(p)
-        return pdfs, rejected
+        return reports, rejected

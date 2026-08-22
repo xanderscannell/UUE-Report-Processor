@@ -6,6 +6,19 @@ Versions follow [semantic versioning](https://semver.org/): the major number
 moves when the interface or the deliverable changes shape, the minor when
 features are added compatibly.
 
+## [4.2.0] - 2026-08-22: Read event data straight from the database export
+
+- **New second event source.** The app now reads the events database's **Daily Events Excel export** (`.xlsx`) as well as Daily Setup Report PDFs. No more depending on PDF layout for the daily run
+- The file type is detected from its extension — there is no mode to switch. Drop a PDF, an export, or a mix of both into the same batch and each is read the right way
+- Everything after that is unchanged: the same location whitelist, the same Setup Ready By / Closing rows, the same sorting, the same Excel/CSV output, and the same timeline
+- The CLI's file argument is now `report_file` and takes either type: `python setup_report_processor.py DailyEventsExcel.xlsx`
+- Output files are still named from the report's own date, read from the export's Parameter Summary sheet (falling back to the sheet title, then its Day column)
+- A multi-day export is read whole — every `Event List` sheet, not just the first
+- If the report definition changes and a needed column disappears, the file fails with a message naming the missing column instead of failing obscurely
+- **Note**: the export has no setup-start column, so for Excel sources **Setup Ready By is the event's own start time**. Schedules built from an export carry no setup lead time
+- **Note**: the export covers all campus locations, so it contains many rooms the PDF never did (Fieldhouse, parking lots). They are filtered out until enabled in **Settings → Location Whitelist…**
+- Test suite grew from 56 to 87 tests
+
 ## [4.1.0] - 2026-08-04: Keep awake + persistent preferences
 
 - New **Settings → Keep computer awake** toggle — stops the computer sleeping and the display turning off while the window is open, for leaving the event timeline up on a screen. Windows only; released automatically when the app closes

@@ -42,10 +42,10 @@ gui_wrapper.bat
 # Any platform, with the venv activated:
 python gui_wrapper.py
 ```
-Drop PDFs in, pick Excel and/or CSV, click Process. Full walkthrough in
+Drop reports in, pick Excel and/or CSV, click Process. Full walkthrough in
 [README_GUI.md](README_GUI.md).
 
-**Process a single PDF:**
+**Process a single report (`.pdf` or `.xlsx`):**
 ```bash
 python setup_report_processor.py your_report.pdf
 ```
@@ -61,7 +61,7 @@ python setup_report_processor.py report.pdf -o weekly_schedule.xlsx
 python setup_report_processor.py report.pdf --csv
 ```
 
-**Process all PDFs in a folder:**
+**Process all reports in a folder:**
 ```bash
 # Windows:
 batch_process.bat
@@ -72,7 +72,7 @@ batch_process.bat
 
 ### What it Does
 
-1. Extracts events from Daily Setup Report PDFs
+1. Extracts events from Daily Setup Report PDFs or Daily Events Excel exports
 2. Filters events by location, using the whitelist in `location_config.json`
    (editable in the app under Settings → Location Whitelist…)
 3. Creates two entries per event:
@@ -96,7 +96,7 @@ pip install -r requirements.txt
 ```
 
 **No output files generated:**
-- Check that PDF path is correct
+- Check that the report path is correct
 - Run with `--verbose` flag for details
 - Check `setup_report_processor.log`
 

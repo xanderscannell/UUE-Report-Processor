@@ -27,7 +27,8 @@
 
 ```
 ./
-  setup_report_processor.py   # Core processor (single file)
+  setup_report_processor.py   # Shared pipeline, PDF reader, create_processor()
+  daily_events_excel.py       # Daily Events Excel export reader
   gui_wrapper.py              # GUI entry point (MainWindow, stage machine)
   gui_components/
     __init__.py               # Public exports
@@ -104,6 +105,8 @@ def parse_time(self, time_str: str) -> Optional[datetime]:
 ## Constants and Configuration
 
 - Location filters defined as class-level constants (not in external config)
+- Accepted report types come from `SUPPORTED_SUFFIXES` in
+  `setup_report_processor.py` — never re-list extensions in a widget or the CLI
 - Regex patterns stored as class constants when reused
 - GUI behavioral defaults in `gui_components/settings.py`
 

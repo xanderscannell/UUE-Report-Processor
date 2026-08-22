@@ -318,3 +318,71 @@ executable, and read/written by `gui_components/preferences.py`.
 **Relevant code**: `gui_components/preferences.py`, `gui_wrapper.py`
 (`_remember`, `_set_verbose`, `_set_gantt_autolaunch`, `_set_keep_awake`,
 `_browse_output_folder`), `gui_components/settings.py`
+
+---
+
+## ADR-008: Read the database's Excel export as a second event source
+
+**Date**: 2026-08-22
+**Status**: Accepted
+
+**Context**:
+Direct access to the events database removed the reason the app existed in its
+original form: event data no longer has to be recovered from a rendered PDF.
+The database's cleanest export is `Daily Events - Excel`, a real spreadsheet
+whose `Location` column already uses the same room codes as the whitelist
+(`UC 1225`, `UC Kochoff Hall C`) and which carries one row per **booking** —
+which is exactly how the PDF path already models an event-in-a-room.
+
+Parsing it is a column lookup instead of the regex stack described in ADR-001
+and ADR-003. But those PDFs are still produced and still get processed, so this
+had to be a second option rather than a replacement.
+
+**Decision**:
+Split `SetupReportProcessor` into a source-independent base class,
+`EventScheduleProcessor`, plus one subclass per format, and dispatch on the
+file's extension through `create_processor()`.
+
+- The base owns everything downstream of extraction: config loading, whitelist
+  matching, time parsing, schedule rows, sorting, output, and the Gantt feed
+- Subclasses own only `_validate_suffix()`, `extract_report_date()` and
+  `_collect_events()`, and return the identical event dict
+- `SUPPORTED_SUFFIXES` next to `create_processor()` is the one place that says
+  what the app accepts; the CLI, the worker, and the drop zone all read it
+- **`Setup Ready By` comes from `Event Start`.** The export has no setup-start
+  column, and this is precisely what `_extract_setup_time()` already does as
+  its third fallback, so no data is invented
+- **One whitelist filters both sources.** The export's `Location Search` is
+  `All Locations`, so it carries rooms the PDF never had (`FH Gym`,
+  `Pk Lot E3`); they are excluded until enabled in the Locations editor
+
+**Rationale**:
+- A parallel script would have duplicated sorting, filtering, output and Gantt
+  logic, and the two copies would have drifted the first time either changed
+- Extension dispatch needs no new UI: no mode switch, no extra stage, no
+  preference to persist, and a mixed batch of PDFs and exports just works
+- Keeping the shared event dict string-typed (`"9:00 AM"`) means the Excel path
+  reuses `parse_time()` and `convert_to_24hour()` — including their tested
+  midnight-crossing behaviour — rather than introducing a second time model
+- The refactor was verified by slicing the PDF methods across verbatim: 18
+  method bodies are byte-identical, and all 56 pre-existing tests pass unedited
+
+**Consequences**:
+- (+) The daily path no longer depends on PDF layout, the app's most fragile
+  input; a pdfplumber quirk can no longer silently drop an event
+- (+) A new source (a CSV, a direct query) is now a subclass, not a fork
+- (−) An xlsx-derived schedule has **no setup lead time** — its "Setup Ready By"
+  is the event's own start, so it will be later than the same event's row from
+  a PDF. If the report builder can emit a reservation/setup start, adding it is
+  a one-line change to `_parse_event_row()`
+- (−) `daily_events_excel` is imported inside `create_processor()` rather than
+  at module scope, because it imports the base class from
+  `setup_report_processor` and a top-level import would be circular
+- (−) The reader logs to `setup_report_processor.daily_events_excel`, a child of
+  the logger the GUI attaches its panel handler to. A plain
+  `getLogger(__name__)` would have propagated to the root logger instead, and
+  its EXCLUDED lines would never have reached the log panel
+
+**Files**:
+`daily_events_excel.py`, `setup_report_processor.py:EventScheduleProcessor`,
+`setup_report_processor.py:create_processor`

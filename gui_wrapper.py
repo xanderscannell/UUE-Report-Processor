@@ -2,7 +2,7 @@
 """
 Setup Report Processor - GUI (PySide6)
 ======================================
-Drag-and-drop desktop interface for processing Daily Setup Report PDFs.
+Drag-and-drop desktop interface for processing event reports.
 
 The window is staged: it shows an inviting drop target when empty, a working
 queue once files are added, and a results summary when a run finishes. Only
@@ -10,7 +10,7 @@ what matters at the current step is on screen; setup actions live in the
 Settings menu and the processing log behind a "Details" disclosure.
 
 Features:
-- Drag-and-drop PDF files anywhere in the window (native Qt)
+- Drag-and-drop PDF or Excel reports anywhere in the window (native Qt)
 - Batch processing on a background thread, with per-file status
 - Excel and/or CSV output
 - Embedded event timeline (pyqtgraph Gantt chart)
@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):
         steps.setSpacing(SPACE["md"])
         for i, (title, body) in enumerate(
             [
-                ("Add PDFs", "Drop one or more Daily Setup Reports."),
+                ("Add reports", "Setup Report PDFs or Daily Events Excel."),
                 ("Choose output", "Excel, CSV, or both."),
                 ("Process", "Get a sorted schedule and a timeline."),
             ],
@@ -422,7 +422,8 @@ class MainWindow(QMainWindow):
             self,
             "About Setup Report Processor",
             f"<b>{GUI_DEFAULTS['window_title']}</b><br><br>"
-            "Extracts event schedules from Daily Setup Report PDFs and writes "
+            "Extracts event schedules from Daily Setup Report PDFs and Daily "
+            "Events Excel exports, and writes "
             "chronologically sorted Excel/CSV files, plus an interactive "
             "timeline of the day.<br><br>"
             f"Working folder: {BASE_DIR}",
@@ -514,7 +515,7 @@ class MainWindow(QMainWindow):
     def _on_files_rejected(self, paths):
         for path in paths:
             logging.getLogger("setup_report_processor").warning(
-                f"Ignored non-PDF file: {path.name}"
+                f"Ignored unsupported file: {path.name}"
             )
 
     def _on_queue_changed(self):
@@ -538,7 +539,7 @@ class MainWindow(QMainWindow):
         self.process_button.setEnabled(bool(count) and not self.processing)
 
         if not count:
-            self.hint_label.setText("Add at least one PDF to continue")
+            self.hint_label.setText("Add at least one report to continue")
         elif dry_run:
             self.hint_label.setText("Timeline only — no files will be saved")
         else:

@@ -1,7 +1,7 @@
 """
 Background Processing Worker
 ============================
-Runs PDF processing off the GUI thread using a QThread, communicating back
+Runs report processing off the GUI thread using a QThread, communicating back
 through Qt signals (delivered on the GUI thread automatically).
 
 The worker reports per-file outcomes as well as overall progress so the UI can
@@ -14,7 +14,7 @@ from typing import Dict, List
 
 from PySide6.QtCore import QThread, Signal
 
-from setup_report_processor import SetupReportProcessor
+from setup_report_processor import create_processor
 
 logger = logging.getLogger("setup_report_processor")
 
@@ -22,9 +22,23 @@ DONE = "done"
 FAILED = "failed"
 SKIPPED = "skipped"
 
+# A file card shows its detail on one short line, so a reader's error
+# message is trimmed rather than allowed to stretch the layout.
+DETAIL_MAX_CHARS = 60
+
+
+def _short(message: str) -> str:
+    """Condense a reader's error message to fit a file card's detail line."""
+    message = " ".join(message.split())
+    if not message:
+        return "unreadable report"
+    if len(message) > DETAIL_MAX_CHARS:
+        return message[:DETAIL_MAX_CHARS - 1].rstrip() + "…"
+    return message
+
 
 class ProcessorWorker(QThread):
-    """Processes a queue of PDF files and reports progress via signals."""
+    """Processes a queue of report files and reports progress via signals."""
 
     status = Signal(str)                    # human-readable status line
     progress = Signal(int, int, int)        # percent, current, total
@@ -47,27 +61,27 @@ class ProcessorWorker(QThread):
         total = len(self.files)
         summary = {"ok": 0, "failed": 0, "empty": 0, "events": 0}
 
-        for i, pdf_path in enumerate(self.files):
+        for i, report_path in enumerate(self.files):
             if self._cancelled:
                 self.status.emit("Cancelled")
                 break
 
-            self.status.emit(f"Reading {pdf_path.name}…")
-            self.file_started.emit(pdf_path)
+            self.status.emit(f"Reading {report_path.name}…")
+            self.file_started.emit(report_path)
 
             try:
-                processor = SetupReportProcessor(
-                    str(pdf_path), config_path=self.options.get("config_path")
+                processor = create_processor(
+                    str(report_path), config_path=self.options.get("config_path")
                 )
                 df = processor.process()
                 event_count = len(processor._events)
 
                 if len(df) == 0:
                     logger.warning(
-                        f"No events matched the location whitelist in {pdf_path.name}"
+                        f"No events matched the location whitelist in {report_path.name}"
                     )
                     summary["empty"] += 1
-                    self.file_done.emit(pdf_path, SKIPPED, "no matching events")
+                    self.file_done.emit(report_path, SKIPPED, "no matching events")
                 else:
                     output_dir = self.options["output_dir"]
                     basename = processor.get_output_basename()
@@ -88,30 +102,32 @@ class ProcessorWorker(QThread):
 
                     gantt_rows = processor.create_gantt_rows(processor._events)
                     if gantt_rows:
-                        self.gantt_ready.emit(basename or pdf_path.stem, gantt_rows)
+                        self.gantt_ready.emit(basename or report_path.stem, gantt_rows)
 
                     summary["ok"] += 1
                     summary["events"] += event_count
                     noun = "event" if event_count == 1 else "events"
-                    self.file_done.emit(pdf_path, DONE, f"{event_count} {noun}")
+                    self.file_done.emit(report_path, DONE, f"{event_count} {noun}")
                     logger.info(
-                        f"Read {pdf_path.name} ({event_count} {noun}); no files written"
+                        f"Read {report_path.name} ({event_count} {noun}); no files written"
                         if not (self.options["excel_enabled"] or self.options["csv_enabled"])
-                        else f"Successfully processed {pdf_path.name}"
+                        else f"Successfully processed {report_path.name}"
                     )
 
             except FileNotFoundError:
-                logger.error(f"File not found: {pdf_path.name}")
+                logger.error(f"File not found: {report_path.name}")
                 summary["failed"] += 1
-                self.file_done.emit(pdf_path, FAILED, "file not found")
+                self.file_done.emit(report_path, FAILED, "file not found")
             except ValueError as e:
-                logger.error(f"Invalid file: {pdf_path.name} - {e}")
+                logger.error(f"Invalid file: {report_path.name} - {e}")
                 summary["failed"] += 1
-                self.file_done.emit(pdf_path, FAILED, "not a readable PDF")
+                # Surface the reader's own message (a missing column, a
+                # legacy .xls) instead of a generic label.
+                self.file_done.emit(report_path, FAILED, _short(str(e)))
             except Exception as e:
-                logger.error(f"Error processing {pdf_path.name}: {e}")
+                logger.error(f"Error processing {report_path.name}: {e}")
                 summary["failed"] += 1
-                self.file_done.emit(pdf_path, FAILED, "failed")
+                self.file_done.emit(report_path, FAILED, "failed")
 
             # Always advance, including for skipped and failed files.
             self.progress.emit(int((i + 1) / total * 100), i + 1, total)

@@ -10,7 +10,10 @@ import pytest
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
-from setup_report_processor import SetupReportProcessor
+from openpyxl import Workbook
+
+from setup_report_processor import SetupReportProcessor, create_processor
+from daily_events_excel import DailyEventsExcelProcessor, _format_time
 
 # Imported directly rather than via the package, so the suite stays runnable
 # without PySide6 installed.
@@ -619,3 +622,339 @@ class TestPreferences:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# ======================================================================
+# Daily Events Excel export
+# ======================================================================
+
+# Columns as the database emits them, in order.
+EXPORT_HEADERS = [
+    "Day", "Event Start", "Event End", "Event Name", "Event Title",
+    "Reference #", "Location", "Formal Name", "Layout", "Event Type",
+]
+
+DAY = datetime(2026, 8, 22)
+
+
+def booking(location, name="FSL Retreat", start=(9, 0), end=(15, 30),
+            title=None, reference="2026-AAPFPT", day=DAY):
+    """Build one export row (a booking) in EXPORT_HEADERS order."""
+    return [
+        day,
+        datetime(day.year, day.month, day.day, *start),
+        datetime(day.year, day.month, day.day, *end),
+        name, title, reference, location,
+        f"Formal {location}", "Banquet Rounds", "Staff Retreat",
+    ]
+
+
+def write_export(path, rows, headers=None, report_date="Aug 22 2026",
+                 sheet_titles=("Event List Aug 22 2026",)):
+    """
+    Write a workbook shaped like the database's Daily Events export.
+
+    The real sample file is gitignored (``*.xlsx``), so every test builds its
+    own fixture rather than depending on a file that a clean clone lacks.
+
+    Args:
+        path: Where to write the .xlsx
+        rows: List of row lists, or a dict of sheet title to row lists
+        headers: Header row (defaults to EXPORT_HEADERS)
+        report_date: Value beside the "Report Date" label; None omits the
+            Parameter Summary sheet entirely
+        sheet_titles: Titles for the data sheets
+    """
+    workbook = Workbook()
+    first = workbook.active
+
+    if report_date is None:
+        first.title = sheet_titles[0]
+        sheets = [first]
+    else:
+        first.title = "Parameter Summary"
+        first.append([None, "Report Name", "Daily Events - Excel"])
+        first.append([None, "Report Date", report_date])
+        first.append([None, "Location Search", "All Locations"])
+        sheets = [workbook.create_sheet(title) for title in sheet_titles]
+
+    by_sheet = rows if isinstance(rows, dict) else {sheet_titles[0]: rows}
+    for sheet in sheets:
+        sheet.append(headers if headers is not None else EXPORT_HEADERS)
+        for row in by_sheet.get(sheet.title, []):
+            sheet.append(row)
+
+    workbook.save(path)
+    return path
+
+
+@pytest.fixture
+def export_config(tmp_path):
+    """A location config with two rooms enabled, matching the export's codes."""
+    config = {
+        "version": 2,
+        "locations": [
+            {"name": "UC 1225", "enabled": True},
+            {"name": "UC Kochoff Hall C", "enabled": True},
+            {"name": "FH Gym", "enabled": False},
+        ],
+    }
+    path = tmp_path / "export_config.json"
+    path.write_text(json.dumps(config))
+    return str(path)
+
+
+class TestExcelTimeFormatting:
+    """Times must come out in the same 12-hour strings the PDF path produces."""
+
+    @pytest.mark.parametrize("hour,minute,expected", [
+        (9, 0, "9:00 AM"),
+        (15, 30, "3:30 PM"),
+        (10, 0, "10:00 AM"),
+        (0, 30, "12:30 AM"),
+        (12, 15, "12:15 PM"),
+        (23, 59, "11:59 PM"),
+    ])
+    def test_datetime_cells(self, hour, minute, expected):
+        """Datetime cells render without a leading zero, as the PDF does."""
+        assert _format_time(datetime(2026, 8, 22, hour, minute)) == expected
+
+    def test_string_cell_is_parsed(self):
+        """Exports that emit text instead of datetimes still work."""
+        assert _format_time("3:30 PM") == "3:30 PM"
+        assert _format_time("09:05 a.m.") == "9:05 AM"
+
+    def test_unusable_cell_returns_none(self):
+        """A blank or unreadable cell yields None rather than raising."""
+        assert _format_time(None) is None
+        assert _format_time("") is None
+        assert _format_time("sometime") is None
+
+
+class TestDailyEventsExcel:
+    """Test reading events out of the Daily Events Excel export."""
+
+    def test_report_date_from_parameter_summary(self, tmp_path, export_config):
+        """The Parameter Summary's Report Date is the preferred source."""
+        path = write_export(tmp_path / "export.xlsx", [booking("UC 1225")])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        assert processor.report_date == "08-22-26"
+        assert processor.get_output_basename() == "08-22-26"
+
+    def test_report_date_falls_back_to_sheet_title(self, tmp_path, export_config):
+        """With no Parameter Summary, the sheet title carries the date."""
+        path = write_export(
+            tmp_path / "export.xlsx", [booking("UC 1225")], report_date=None
+        )
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        assert processor.report_date == "08-22-26"
+
+    def test_report_date_falls_back_to_day_column(self, tmp_path, export_config):
+        """With no date in the title either, the Day column is used."""
+        path = write_export(
+            tmp_path / "export.xlsx", {"Event List": [booking("UC 1225")]},
+            report_date=None, sheet_titles=("Event List",),
+        )
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        assert processor.report_date == "08-22-26"
+
+    def test_report_date_absent_falls_back_to_filename(self, tmp_path, export_config):
+        """With no date anywhere, output naming reverts to the file stem."""
+        rows = [booking("UC 1225")]
+        rows[0][0] = None  # blank the Day cell
+        path = write_export(
+            tmp_path / "DailyEventsExcel.xlsx", {"Event List": rows},
+            report_date=None, sheet_titles=("Event List",),
+        )
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        assert processor.report_date is None
+        assert processor.get_output_basename() == "DailyEventsExcel"
+
+    def test_whitelisted_location_is_kept(self, tmp_path, export_config):
+        """A room on the whitelist produces an event record."""
+        path = write_export(tmp_path / "export.xlsx", [booking("UC 1225")])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        events = processor._collect_events()
+
+        assert len(events) == 1
+        assert events[0] == {
+            "event_name": "FSL Retreat",
+            "location": "UC 1225",
+            "setup_time": "9:00 AM",
+            "closing_time": "3:30 PM",
+        }
+
+    def test_unlisted_locations_are_dropped(self, tmp_path, export_config):
+        """The export covers all campus rooms; only whitelisted ones survive."""
+        path = write_export(tmp_path / "export.xlsx", [
+            booking("UC 1225"),
+            booking("FH Gym", name="Just Between Friends"),
+            booking("Pk Lot E3", name="Dearborn Electric Racing"),
+            booking("FH Ice Arena", name="W. Ice Hockey Camp"),
+        ])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        events = processor._collect_events()
+
+        assert [e["location"] for e in events] == ["UC 1225"]
+
+    def test_two_bookings_of_one_event_yield_two_records(self, tmp_path, export_config):
+        """One event in two rooms is two bookings, matching the PDF model."""
+        path = write_export(tmp_path / "export.xlsx", [
+            booking("UC 1225"),
+            booking("UC Kochoff Hall C"),
+        ])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        events = processor._collect_events()
+
+        assert len(events) == 2
+        assert {e["location"] for e in events} == {"UC 1225", "UC Kochoff Hall C"}
+        assert {e["event_name"] for e in events} == {"FSL Retreat"}
+
+    def test_event_title_used_when_name_is_blank(self, tmp_path, export_config):
+        """Event Title is the fallback when Event Name is empty."""
+        row = booking("UC 1225", name=None, title="Fraternity & Sorority Life Retreat")
+        path = write_export(tmp_path / "export.xlsx", [row])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+
+        events = processor._collect_events()
+        assert events[0]["event_name"] == "Fraternity & Sorority Life Retreat"
+
+    def test_blank_rows_are_ignored(self, tmp_path, export_config):
+        """Trailing empty rows must not count as excluded events."""
+        path = write_export(tmp_path / "export.xlsx", [
+            booking("UC 1225"),
+            [None] * len(EXPORT_HEADERS),
+            [None] * len(EXPORT_HEADERS),
+        ])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        assert len(processor._collect_events()) == 1
+
+    def test_row_missing_times_is_excluded(self, tmp_path, export_config):
+        """A booking with no usable times cannot be scheduled."""
+        row = booking("UC 1225")
+        row[1] = None
+        path = write_export(tmp_path / "export.xlsx", [row])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        assert processor._collect_events() == []
+
+    def test_all_event_list_sheets_are_read(self, tmp_path, export_config):
+        """A multi-day export must not be truncated to its first sheet."""
+        titles = ("Event List Aug 22 2026", "Event List Aug 23 2026")
+        path = write_export(
+            tmp_path / "export.xlsx",
+            {
+                titles[0]: [booking("UC 1225")],
+                titles[1]: [booking("UC Kochoff Hall C", name="Day Two")],
+            },
+            sheet_titles=titles,
+        )
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        events = processor._collect_events()
+
+        assert len(events) == 2
+        assert {e["event_name"] for e in events} == {"FSL Retreat", "Day Two"}
+
+    def test_missing_required_column_raises(self, tmp_path, export_config):
+        """A changed report definition fails loudly, naming what is absent."""
+        headers = [h for h in EXPORT_HEADERS if h != "Location"]
+        rows = [[c for i, c in enumerate(booking("UC 1225"))
+                 if EXPORT_HEADERS[i] != "Location"]]
+        path = write_export(tmp_path / "export.xlsx", rows, headers=headers)
+
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        with pytest.raises(ValueError, match="Missing required column"):
+            processor._collect_events()
+
+    def test_headers_are_matched_case_insensitively(self, tmp_path, export_config):
+        """Column names are matched loosely so casing changes do not break it."""
+        headers = [h.upper() for h in EXPORT_HEADERS]
+        path = write_export(
+            tmp_path / "export.xlsx", [booking("UC 1225")], headers=headers
+        )
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        assert len(processor._collect_events()) == 1
+
+    def test_non_xlsx_file_rejected(self, tmp_path):
+        """The reader refuses files it cannot open."""
+        txt = tmp_path / "notes.txt"
+        txt.write_text("not a workbook")
+        with pytest.raises(ValueError, match="Expected Excel file"):
+            DailyEventsExcelProcessor(str(txt))
+
+    def test_legacy_xls_gets_a_pointed_message(self, tmp_path):
+        """.xls cannot be read by openpyxl, so say so rather than failing oddly."""
+        legacy = tmp_path / "old.xls"
+        legacy.write_text("")
+        with pytest.raises(ValueError, match="re-save the report as .xlsx"):
+            DailyEventsExcelProcessor(str(legacy))
+
+    def test_missing_file_raises(self, tmp_path):
+        """A path that does not exist fails before any parsing."""
+        with pytest.raises(FileNotFoundError):
+            DailyEventsExcelProcessor(str(tmp_path / "gone.xlsx"))
+
+    def test_process_produces_a_sorted_schedule(self, tmp_path, export_config):
+        """End to end: two bookings become four chronologically sorted rows."""
+        path = write_export(tmp_path / "export.xlsx", [
+            booking("UC Kochoff Hall C", start=(13, 0), end=(16, 0)),
+            booking("UC 1225", start=(9, 0), end=(15, 30)),
+            booking("FH Gym", name="Excluded"),
+        ])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        df = processor.process()
+
+        assert list(df.columns) == ["Event Name", "Location", "Activity", "Time"]
+        assert len(df) == 4
+        assert list(df["Time"]) == ["9:00 AM", "1:00 PM", "3:30 PM", "4:00 PM"]
+        assert list(df["Activity"]) == [
+            "Setup Ready By", "Setup Ready By", "Closing", "Closing"
+        ]
+        assert "Excluded" not in set(df["Event Name"])
+
+    def test_gantt_rows_share_the_pdf_path(self, tmp_path, export_config):
+        """Excel events feed the timeline through the same conversion."""
+        path = write_export(tmp_path / "export.xlsx", [booking("UC 1225")])
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+
+        rows = processor.create_gantt_rows(processor._collect_events())
+        assert rows == [{
+            "EventName": "FSL Retreat",
+            "Location": "UC 1225",
+            "StartTime": "09:00",
+            "EndTime": "15:30",
+        }]
+
+
+class TestProcessorFactory:
+    """Test extension-based dispatch to the right reader."""
+
+    def test_pdf_returns_the_pdf_processor(self, tmp_path):
+        """A .pdf is routed to the regex-based reader."""
+        pdf = tmp_path / "report.pdf"
+        pdf.write_text("")
+        assert isinstance(create_processor(str(pdf)), SetupReportProcessor)
+
+    def test_xlsx_returns_the_excel_processor(self, tmp_path, export_config):
+        """An .xlsx is routed to the database export reader."""
+        path = write_export(tmp_path / "export.xlsx", [booking("UC 1225")])
+        processor = create_processor(str(path), config_path=export_config)
+        assert isinstance(processor, DailyEventsExcelProcessor)
+
+    def test_extension_matching_is_case_insensitive(self, tmp_path, export_config):
+        """An .XLSX from a Windows share dispatches the same way."""
+        path = write_export(tmp_path / "EXPORT.XLSX", [booking("UC 1225")])
+        processor = create_processor(str(path), config_path=export_config)
+        assert isinstance(processor, DailyEventsExcelProcessor)
+
+    def test_unsupported_extension_raises(self, tmp_path):
+        """Anything else is refused before the file is opened."""
+        other = tmp_path / "notes.docx"
+        other.write_text("")
+        with pytest.raises(ValueError, match="Unsupported report type"):
+            create_processor(str(other))
+
+    def test_config_path_is_passed_through(self, tmp_path, export_config):
+        """The factory must not drop the caller's config path."""
+        path = write_export(tmp_path / "export.xlsx", [booking("UC 1225")])
+        processor = create_processor(str(path), config_path=export_config)
+        assert set(processor._location_whitelist) == {"UC 1225", "UC Kochoff Hall C"}

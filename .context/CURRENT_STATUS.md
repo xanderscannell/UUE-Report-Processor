@@ -1,21 +1,69 @@
 # Project Status
 
-**Last updated**: 2026-08-04
+**Last updated**: 2026-08-22
 
 ## Current Position
 
-**Phase**: GUI Modernization
-**Subphase**: Frontend overhaul — staged UI + custom design system (ADR-005, ADR-006)
-**Progress**: Window restructured into empty → workspace → results stages with a
-UM-Dearborn themed design system. All 49 tests pass; end-to-end GUI smoke test
-passes (worker thread → per-file status → results screen); every screen reviewed
-rendered in both light and dark. Docs are current. Pending: on-display
-verification with a real PDF, and an exe rebuild.
+**Phase**: Second event source — the Daily Events Excel export
+**Subphase**: Reader built and tested; awaiting verification against more real exports
+**Progress**: The app now reads the events database's `Daily Events - Excel`
+export alongside Daily Setup Report PDFs, dispatched by file extension. 87/87
+tests pass, including all 56 pre-existing ones **unedited**. Docs and ADR-008
+are current. Pending: a real-export soak beyond the single sample, an
+on-display GUI check, and the exe rebuild that was already outstanding.
 
-See [CHECKPOINTS/2026-08-05-frontend-overhaul.md](CHECKPOINTS/2026-08-05-frontend-overhaul.md)
-for the full session record, including the bugs found and how they were resolved.
+## Recently Completed (2026-08-22 — Daily Events Excel source)
 
-## Recently Completed (2026-08-04 — changelog extracted)
+- **New reader** `daily_events_excel.py` (`DailyEventsExcelProcessor`) reads the
+  export's `Parameter Summary` (report date) and `Event List <date>` sheets.
+  One row per booking, which is already how the PDF path models an
+  event-in-a-room, so an event in two rooms correctly yields two records.
+- **Shared base class** (ADR-008): `SetupReportProcessor` was split into
+  `EventScheduleProcessor` (config, whitelist, time parsing, schedule rows,
+  sorting, output, Gantt feed) plus one subclass per format. A subclass supplies
+  only `_validate_suffix()`, `extract_report_date()` and `_collect_events()`.
+- **The refactor was verified structurally, not just by tests**: the PDF methods
+  were sliced across verbatim and an AST comparison confirms 18 method bodies
+  are byte-identical. Only `__init__`, `process()` and `get_output_basename()`
+  changed, all deliberately.
+- **Extension dispatch**: `create_processor()` + `SUPPORTED_SUFFIXES` in
+  `setup_report_processor.py` are the one place that says what the app accepts;
+  the CLI, `worker.py` and `drop_zone.py` all read it. No mode switch, no new
+  stage, no new persisted preference — a mixed PDF + xlsx batch just works.
+- **`Setup Ready By` = `Event Start`** for the Excel source. The export has no
+  setup-start column and this is the PDF parser's own third fallback, so nothing
+  is invented — but xlsx schedules carry **no setup lead time**. If the report
+  builder can emit a reservation/setup start, it is a one-line change in
+  `_parse_event_row()`.
+- **One whitelist for both sources.** The export's `Location Search` is
+  `All Locations`, so it carries rooms the PDF never had (`FH Gym`,
+  `Pk Lot E3/E4`, `FH Ice Arena`); they are excluded until enabled in the
+  Locations editor.
+- **Robustness**: every `Event List` sheet is read (a multi-day export is not
+  truncated to its first day); a missing required column raises `ValueError`
+  naming it, which the worker now surfaces on the file card instead of the old
+  fixed "not a readable PDF" text; `.xls` gets a pointed re-save message.
+- **Two non-obvious details worth remembering**:
+  - The reader logs to `setup_report_processor.daily_events_excel`, a *child* of
+    the logger `gui_wrapper.py` attaches its panel handler to. A plain
+    `getLogger(__name__)` would propagate to the root logger instead and its
+    EXCLUDED lines would never reach the log panel.
+  - `daily_events_excel` is imported *inside* `create_processor()`; it imports
+    the base class from `setup_report_processor`, so a module-level import
+    would be circular.
+- **Times stay strings** (`"9:00 AM"`), built by hand rather than with
+  `strftime` (`%I`/`%p` are locale-dependent). This reuses `parse_time()` and
+  `convert_to_24hour()` unchanged, midnight-crossing included.
+- **Tests**: 56 → 87. New `TestExcelTimeFormatting`, `TestDailyEventsExcel` and
+  `TestProcessorFactory`. Fixtures build their own workbooks in `tmp_path` —
+  `.gitignore` ignores `*.xlsx`, so a test reading the sample file would pass
+  locally and fail on a clean clone.
+- **Verified end to end**: `python setup_report_processor.py DailyEventsExcel.xlsx`
+  yields 2 events → 4 rows (FSL Retreat in `UC 1225` and `UC Kochoff Hall C`,
+  9:00 AM / 3:30 PM), basename `08-22-26` from the Parameter Summary, with the
+  four non-whitelisted rooms logged as excluded.
+
+## Earlier Completed (2026-08-04 — changelog extracted)
 
 - **`CHANGELOG.md` is now the release history**. The README's Version History
   section was migrated out verbatim and replaced with a link; the README keeps
@@ -135,7 +183,13 @@ for the full session record, including the bugs found and how they were resolved
 
 ## In Progress
 
-- [ ] Verify the overhauled UI on a real (scaled) display with a real Daily Setup Report PDF
+- [ ] Run the Excel path against more real exports (multi-day, and a day whose
+      events actually land in whitelisted rooms) — the sample only exercises two
+- [ ] Confirm the PDF path is byte-identical on a **real** PDF; no PDF is
+      checked in, so this was verified structurally and by the suite, not by a
+      real end-to-end diff
+- [ ] Verify the overhauled UI on a real (scaled) display, dropping a PDF and an
+      export in one batch
 - [ ] Rebuild the portable exe with the new Qt/pyqtgraph deps
 - [x] Refresh `documentation/README_GUI.md` and `QUICKSTART.md` for the staged UI
 - [x] Update the top-level README for the staged UI, Settings menu, and timeline
@@ -144,8 +198,9 @@ for the full session record, including the bugs found and how they were resolved
 
 ## Next Up
 
-1. Run `python gui_wrapper.py`, process a real PDF end to end, open **View Timeline**,
-   and confirm crispness on a scaled display in both light and dark mode
+1. Run `python gui_wrapper.py`, process a real PDF **and** a real Excel export in
+   one batch, open **View Timeline**, and confirm crispness on a scaled display
+   in both light and dark mode
 2. Rebuild exe (Qt needs no special flags; PyInstaller ships PySide6/pyqtgraph hooks):
    `pyinstaller --windowed --name SetupReportProcessor --icon=UUE.ico gui_wrapper.py`
    — confirm `UUE.ico` lands next to the exe (used for the window icon at runtime)
@@ -158,11 +213,12 @@ for the full session record, including the bugs found and how they were resolved
 ## Active Files and Modules
 
 ```
-setup_report_processor.py    [status: stable; create_gantt_rows now emits EventName]
-gui_wrapper.py               [status: rewritten — 3-stage MainWindow + Settings menu]
-gui_components/              [status: rewritten; +style.py, +widgets.py, +result_panel.py, +keep_awake.py, +preferences.py]
+setup_report_processor.py    [status: split into EventScheduleProcessor + SetupReportProcessor; +create_processor]
+daily_events_excel.py        [status: new — Daily Events Excel export reader]
+gui_wrapper.py               [status: 3-stage MainWindow + Settings menu; copy now source-neutral]
+gui_components/              [status: worker dispatches via create_processor; drop_zone reads SUPPORTED_SUFFIXES]
 location_config.json         [status: stable, v2 format]
-test_setup_report_processor.py [status: stable, 56/56 passing]
+test_setup_report_processor.py [status: stable, 87/87 passing]
 requirements.txt             [status: updated, +PySide6 +pyqtgraph]
 UUE.ico                      [status: app icon — must ship beside exe for window icon]
 build_release.bat            [status: new — builds + zips the portable release]
@@ -170,6 +226,10 @@ build_release.bat            [status: new — builds + zips the portable release
 
 ## Recent Decisions
 
+- **2026-08-22**: Second event source via a shared base class and extension
+  dispatch, not a parallel script (ADR-008)
+- **2026-08-22**: Excel `Setup Ready By` comes from `Event Start`; the whitelist
+  filters both sources identically
 - **2026-08-05**: Staged single-page GUI + app-owned light/dark theme (ADR-005)
 - **2026-08-05**: Gantt bars colored by building, discovered from room-name
   prefixes and configured by the user, not hardcoded (ADR-006)
@@ -194,6 +254,13 @@ cp location_config.json dist/SetupReportProcessor/
 
 ## Notes for Claude
 
+- **Two sources now.** `create_processor()` picks by extension; `SUPPORTED_SUFFIXES`
+  beside it is the only list of accepted types. Adding a third source is a
+  subclass with three methods, not a fork
+- The Excel export has no setup-start column — `Setup Ready By` is the event's
+  own start time, so those schedules carry no setup lead time
+- The Excel reader must log to a **child** of the `setup_report_processor`
+  logger, or its lines never reach the GUI log panel
 - The PDF format has times appearing TWICE per line: `11:30 AM Setup Starts: 11:00 AM Event Name...`
 - pdfplumber text extraction can produce unexpected layouts; always test regex changes against real PDFs
 - `_match_whitelist_location()` uses longest-first `startswith` matching (no more blacklist check)

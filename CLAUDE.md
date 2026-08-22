@@ -1,6 +1,6 @@
 # UUE-Report-Processor
 
-> A Python application that extracts event schedules from Daily Setup Report PDFs and generates chronologically sorted Excel/CSV outputs, with both CLI and GUI interfaces.
+> A Python application that extracts event schedules from Daily Setup Report PDFs or the events database's Daily Events Excel export, and generates chronologically sorted Excel/CSV outputs, with both CLI and GUI interfaces.
 
 ## Context System
 
@@ -53,9 +53,12 @@ Before the session ends:
 
 ## Current Focus
 
-**Phase**: GUI Modernization — frontend overhaul (ADR-005, ADR-006)
-**Working on**: Verifying the staged UI on a real display, then rebuilding the portable exe
-**Key constraint**: Must not break existing regex-based parsing for working PDF formats.
+**Phase**: Second event source — the Daily Events Excel export (ADR-008)
+**Working on**: Verifying the Excel path against real exports, then rebuilding the portable exe
+**Key constraint**: Must not break existing regex-based parsing for working PDF formats —
+the PDF reader stays a first-class source, not a deprecated one.
+Accepted file types come from `SUPPORTED_SUFFIXES` in `setup_report_processor.py`;
+never re-list extensions in a widget or the CLI.
 GUI colors come from `gui_components/style.py` — never hard-code a hex in a widget.
 
 ## Reference

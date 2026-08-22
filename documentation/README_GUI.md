@@ -1,6 +1,7 @@
 # Setup Report Processor - GUI Edition
 
-A drag-and-drop desktop interface (PySide6) for processing Daily Setup Report PDFs.
+A drag-and-drop desktop interface (PySide6) for processing event reports —
+Daily Setup Report PDFs and the events database's Daily Events Excel exports.
 
 ## Quick Start
 
@@ -8,7 +9,7 @@ A drag-and-drop desktop interface (PySide6) for processing Daily Setup Report PD
 
 1. Extract `SetupReportProcessor.zip`
 2. Double-click `SetupReportProcessor.exe`
-3. Drop PDF files anywhere in the window
+3. Drop PDF or Excel report files anywhere in the window
 4. Pick **Excel** and/or **CSV** — or neither, for a timeline-only run
 5. Click **Process N files**
 
@@ -24,8 +25,11 @@ Processed schedules are saved to the `output` folder by default.
 
 ## Features
 
-- **Drag-and-drop** — drop PDFs anywhere in the window (native, no extra setup)
-- **Batch processing** — queue multiple PDFs; each shows live status as it runs
+- **Two report types** — Daily Setup Report PDFs (`.pdf`) and Daily Events
+  Excel exports (`.xlsx`). The type is detected from the file, so there is
+  nothing to switch and one batch can mix both
+- **Drag-and-drop** — drop reports anywhere in the window (native, no extra setup)
+- **Batch processing** — queue multiple reports; each shows live status as it runs
 - **Flexible output** — Excel, CSV, both, or neither
 - **Event timeline** — the day's schedule as a Gantt chart, colored by building
 - **Results summary** — files processed, events found, issues, and where output went
@@ -40,12 +44,12 @@ The window changes with what you're doing — you only ever see what's relevant 
 
 ### 1. Empty — nothing queued yet
 
-A large drop target plus a three-step summary of what the app does. Drop PDFs on
+A large drop target plus a three-step summary of what the app does. Drop reports on
 it, or click anywhere in the box to browse.
 
 ### 2. Workspace — files queued
 
-- **Add more PDFs** — a slim drop strip at the top; you can also drop anywhere in the window
+- **Add more reports** — a slim drop strip at the top; you can also drop anywhere in the window
 - **Queue** — one card per file, showing its name and folder. Each has its own **✕**
   to remove it; **Clear all** empties the queue. While processing, each card shows a
   status dot (queued → spinner → check / cross) and its result, e.g. "31 events"
@@ -108,7 +112,7 @@ Open it with **View Timeline** on the results screen, or turn on
 - A dashed line marks the current time and refreshes every minute
 - Hover a bar for the event name, location, and exact times
 - The view is fixed (no accidental panning or zooming)
-- Process several PDFs at once to get a **Report** selector for switching between days
+- Process several reports at once to get a **Report** selector for switching between days
 
 ---
 
@@ -156,11 +160,16 @@ hard to tell apart, and the per-bar location labels are what keep them straight.
 **No events found**
 - Expand **Details** to see why events were skipped
 - A location may be unchecked in the whitelist, or the PDF format may differ
+- Excel exports cover **all** campus locations, so most rows are expected to be
+  filtered out — add the rooms you want under **Settings → Location Whitelist…**
+- If an Excel file fails with "missing required column", the report definition
+  changed: it needs `Event Start`, `Event End`, `Event Name` and `Location`
 - Turn on **Settings → Verbose logging** and process again for more detail
 
 **Processing fails for a file**
 - The file's card shows the reason; **Details** has the full error
-- Verify the PDF isn't corrupted and opens in a PDF reader
+- Verify the PDF isn't corrupted and opens in a PDF reader; for a workbook,
+  note that legacy `.xls` files must be re-saved as `.xlsx`
 
 **A building's bars are gray on the timeline**
 - Its room-name prefix has no color yet — open **Settings → Building Colors…**,
@@ -184,7 +193,7 @@ All processing happens locally on your computer; no data is sent anywhere.
 
 ## FAQ
 
-**Can I process multiple PDFs at once?**
+**Can I process multiple reports at once?**
 Yes — drop several in, or Ctrl+Click multiple files when browsing.
 
 **Can I get both Excel and CSV?**
