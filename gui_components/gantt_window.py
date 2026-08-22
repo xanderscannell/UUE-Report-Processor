@@ -493,6 +493,15 @@ class GanttWindow(QMainWindow):
         self.plot.getAxis("left").setTicks([major])
 
     def eventFilter(self, obj, event):
+        # Qt runs its own help pass roughly 700ms after the pointer comes to
+        # rest: it sends QEvent.ToolTip to the widget underneath, and
+        # QGraphicsView hands that to the scene, which finds no item carrying a
+        # toolTip() and calls showText(pos, "") - clearing whatever is on
+        # screen, which is our card. We own the tooltip for this widget, so the
+        # automatic pass has nothing to contribute and must not run.
+        if event.type() == QEvent.Type.ToolTip:
+            return True
+
         # A cursor can leave the plot without a final move event landing off a
         # bar, which would strand the held card with nothing left to hide it.
         if event.type() == QEvent.Type.Leave:

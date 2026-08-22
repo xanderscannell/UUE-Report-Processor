@@ -12,7 +12,25 @@ tests pass, including all 56 pre-existing ones **unedited**. Docs and ADR-008
 are current. Pending: a real-export soak beyond the single sample, an
 on-display GUI check, and the exe rebuild that was already outstanding.
 
-## Recently Completed (2026-08-22 — multi-day timeline)
+## Recently Completed (2026-08-22 — hover card survives a resting pointer)
+
+- **The hover card was still vanishing after about a second**, but only with a
+  real pointer, which is why every synthetic test passed. Roughly 700ms after
+  the mouse comes to rest Qt runs its own help pass: it sends `QEvent.ToolTip`
+  to the widget underneath, `QGraphicsView` forwards that to the scene as a
+  help event, the scene finds no item carrying a `toolTip()`, and calls
+  `QToolTip.showText(pos, "")` — which clears whatever is on screen, including
+  a card Qt did not put there.
+- **Fix**: consume `QEvent.ToolTip` in the plot viewport's event filter. We own
+  the tooltip for that widget, so the automatic pass has nothing to add.
+- **Lesson for the harness**: `sigMouseMoved` driven synthetically never starts
+  Qt's tooltip wake-up timer, so no amount of synthetic hovering could reproduce
+  this. Diagnosing it took parking the *real* pointer with `QCursor.setPos`
+  (restoring it afterwards). The regression check now sends the `QEvent.ToolTip`
+  directly and allows 0.8s for the 300ms hide timer — verified to fail without
+  the fix and pass with it. Hover checks 8 → 9.
+
+## Earlier Completed (2026-08-22 — multi-day timeline)
 
 - **A weekend now reads as one chart** (ADR-011). The database exports one day
   per file, so several files stack into one timeline, oldest on top, separated
