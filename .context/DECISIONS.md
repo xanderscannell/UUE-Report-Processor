@@ -386,3 +386,84 @@ file's extension through `create_processor()`.
 **Files**:
 `daily_events_excel.py`, `setup_report_processor.py:EventScheduleProcessor`,
 `setup_report_processor.py:create_processor`
+
+## ADR-009: Label the timeline bars themselves, with a readable row floor
+
+**Date**: 2026-08-22
+**Status**: Accepted
+
+**Context**:
+Every bar on the timeline was an unlabeled rectangle. An event's name lived
+only in the hover tooltip (`_on_hover`), so the chart could not be read at a
+glance, screenshotted, or left up on a display — which is the main thing the
+keep-awake setting exists for.
+
+Two properties of the chart made "just draw the text" insufficient:
+
+- The X range is fixed at 6–24h and pan/zoom are deliberately off (ADR-004), so
+  a bar is roughly 40px per hour. A thirty-minute event is a ~20px rectangle.
+- `setYRange(0, idx)` divided the viewport across however many events there
+  were. Forty events in a 640px window gave each bar ~9px of height — shorter
+  than any readable type, so labels would have silently vanished on exactly the
+  busiest days.
+
+**Decision**:
+- **A `GraphicsObject` that paints in device pixels** (`gantt_labels.py`),
+  not `pg.TextItem`. `BarGraphItem` cannot draw text at all, and a `TextItem`
+  per bar cannot measure the bar it belongs to, so it cannot elide. Mapping the
+  data-space corners through `painter.transform()` and then drawing under an
+  identity transform gives both fixed-size type and the bar's true pixel box,
+  so the layout re-fits itself on every resize with no extra plumbing.
+- **A degradation ladder, keyed on measured width**: name + times + room on two
+  lines → name + times → name elided → and, under ~9 average characters of
+  room, the name drawn *outside* the bar in `text_muted`.
+- **The name never yields characters to the times.** The times are only drawn
+  when the full, unelided name fits beside them.
+- **The room's second line is all-or-nothing.** An elided room reads as a bug
+  when the whole string is on the Y axis a few inches to the left.
+- **A row-height floor plus a vertical scrollbar** (`_update_y_window`). The
+  floor is derived from the label font's own metrics (`min_row_height`), not a
+  hardcoded pixel count, so it holds at any display scaling. A day that fits
+  behaves exactly as before and the scrollbar stays hidden.
+- **`ink_on(fill)` in `style.py`** picks each label's ink by WCAG contrast
+  ratio, between two tokens the system already had (`LIGHT["on_brand"]` and
+  `DARK["bg"]`).
+- **`bar_height` 0.62 → 0.78.** Bars carry their own labels now, so the row
+  space is better spent on the bar than on the gap.
+- **The hover tooltip stays**, covering what the pixels cannot: very short
+  events and long room names the 190px Y-axis gutter still hard-clips.
+
+**Rationale**:
+- The palette (ADR-006) spans a wide luminance range on purpose — `#eda100`
+  needs dark ink, `#4a3aa7` needs light. One fixed label color would have
+  failed on half the buildings. Deriving the ink from the fill was measured
+  across every slot in both its light and dark step: the worst case is
+  `#2a78d6` at **4.4:1**, and the rest clear 5:1.
+- The spill-outside rung is what makes the feature work on a real day. Without
+  it only the long events would ever be labeled. It is safe because the chart
+  puts **one event per row**, so the space beside a bar is always free.
+- The floor is a genuine trade, made deliberately: the chart loses
+  "whole day on one screen" on busy days and gains labels that always work.
+- The times and room duplicate what the axes already carry, but the axis only
+  approximates a time and the Y-axis room is easy to lose track of when
+  scanning across; the elision rules keep the duplication from costing the name
+  any room.
+
+**Consequences**:
+- (+) The timeline reads without a mouse, and survives a screenshot.
+- (+) `ink_on` is general — anything painted on an arbitrary fill can use it.
+- (−) **The "now" caption is gone.** Every row carries text now, so the
+  `InfiniteLine` label had nowhere left to sit without covering an event; the
+  red dashed rule against an hour-labeled axis carries it alone.
+- (−) A day with more events than fit **scrolls**, where it used to compress.
+- (−) The room shown inside a bar repeats its Y-axis tick label. This was a
+  deliberate call — all three tooltip fields were wanted in the bar. Dropping
+  the Y-axis labels would reclaim `left_axis_width` (190px, ~23% more bar width
+  for text) if that duplication ever grates.
+- (−) `gantt_labels.py` is the one module in the app that measures in device
+  pixels rather than layout units. `PAD_X`/`GAP`/`MIN_NAME_CHARS` are tuned
+  numbers, not tokens.
+
+**Files**:
+`gui_components/gantt_labels.py` (new), `gui_components/gantt_window.py`,
+`gui_components/style.py:ink_on`, `gui_components/settings.py:GANTT`

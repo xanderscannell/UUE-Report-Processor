@@ -53,13 +53,15 @@ Before the session ends:
 
 ## Current Focus
 
-**Phase**: Second event source — the Daily Events Excel export (ADR-008)
-**Working on**: Verifying the Excel path against real exports, then rebuilding the portable exe
+**Phase**: Timeline legibility — labels on the bars themselves (ADR-009)
+**Working on**: Checking the in-bar labels on a real busy day, verifying the Excel
+path against real exports, then rebuilding the portable exe
 **Key constraint**: Must not break existing regex-based parsing for working PDF formats —
 the PDF reader stays a first-class source, not a deprecated one.
 Accepted file types come from `SUPPORTED_SUFFIXES` in `setup_report_processor.py`;
 never re-list extensions in a widget or the CLI.
-GUI colors come from `gui_components/style.py` — never hard-code a hex in a widget.
+GUI colors come from `gui_components/style.py` — never hard-code a hex in a widget;
+text painted on a chart fill gets its ink from `style.ink_on(fill)`, not a constant.
 
 ## Reference
 

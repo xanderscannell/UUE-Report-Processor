@@ -125,6 +125,47 @@ def active_dark() -> bool:
     return _ACTIVE_DARK if _ACTIVE_DARK is not None else is_dark_mode()
 
 
+# -- contrast ------------------------------------------------------------
+#
+# Chart fills come from the building palette, which spans a wide luminance
+# range on purpose: `#eda100` needs dark ink and `#4a3aa7` needs light. One
+# fixed label color would fail on half the buildings, so text painted on top of
+# a fill has to pick its ink from the fill itself.
+
+def _rel_luminance(color: str) -> float:
+    """WCAG relative luminance of a color, 0 (black) to 1 (white)."""
+    c = QColor(color)
+
+    def channel(v: float) -> float:
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+
+    return (
+        0.2126 * channel(c.redF())
+        + 0.7152 * channel(c.greenF())
+        + 0.0722 * channel(c.blueF())
+    )
+
+
+def _contrast(a: str, b: str) -> float:
+    """WCAG contrast ratio between two colors, 1:1 to 21:1."""
+    la, lb = _rel_luminance(a), _rel_luminance(b)
+    lighter, darker = max(la, lb), min(la, lb)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def ink_on(fill: str) -> str:
+    """
+    The more legible of the two body inks against ``fill``.
+
+    Deliberately independent of the active theme — what a label sits on is the
+    bar, not the window. Both candidates are existing tokens, so this adds no
+    color to the system. Across every palette slot in `building_config.py`, in
+    both its light and dark step, the winner clears 4.4:1.
+    """
+    light_ink, dark_ink = LIGHT["on_brand"], DARK["bg"]
+    return light_ink if _contrast(fill, light_ink) >= _contrast(fill, dark_ink) else dark_ink
+
+
 # -- palette -------------------------------------------------------------
 
 def build_palette(dark: bool) -> QPalette:

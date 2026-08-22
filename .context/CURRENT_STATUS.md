@@ -4,15 +4,57 @@
 
 ## Current Position
 
-**Phase**: Second event source — the Daily Events Excel export
-**Subphase**: Reader built and tested; awaiting verification against more real exports
+**Phase**: Timeline legibility — labels on the bars themselves (ADR-009)
+**Subphase**: Built and verified against rendered output; awaiting an on-display check
 **Progress**: The app now reads the events database's `Daily Events - Excel`
 export alongside Daily Setup Report PDFs, dispatched by file extension. 87/87
 tests pass, including all 56 pre-existing ones **unedited**. Docs and ADR-008
 are current. Pending: a real-export soak beyond the single sample, an
 on-display GUI check, and the exe rebuild that was already outstanding.
 
-## Recently Completed (2026-08-22 — Daily Events Excel source)
+## Recently Completed (2026-08-22 — in-bar timeline labels)
+
+- **Bars carry their own labels** (ADR-009). New `gui_components/gantt_labels.py`
+  paints the event name, room, and time range onto each bar. The event name used
+  to exist nowhere on the canvas — only in the hover tooltip.
+- **A `GraphicsObject` painting in device pixels**, not `pg.TextItem`.
+  `BarGraphItem` cannot draw text and a `TextItem` cannot measure its own bar,
+  so it cannot elide. Mapping the corners through `painter.transform()` and then
+  drawing under an identity transform gives fixed-size type *and* the bar's true
+  pixel box, so the layout re-fits on every resize with no extra plumbing.
+- **A degradation ladder keyed on measured width**: name + times + room on two
+  lines → name + times → name elided → the name drawn *outside* the bar in
+  `text_muted` when the bar is under ~9 average characters wide. The spill rung
+  is what makes it work on a real day; it is safe because there is exactly one
+  event per row, so the space beside a bar is always free.
+- **The name never yields characters to the times** — times are drawn only when
+  the full unelided name fits beside them. The room's second line is
+  all-or-nothing, because an elided room reads as a bug when the whole string is
+  on the Y axis a few inches to the left.
+- **Row-height floor + vertical scrollbar** (`_update_y_window`). Rows used to
+  divide the viewport however many events there were — 40 events in a 640px
+  window left each bar ~9px tall, too short to label. The floor comes from the
+  label font's own metrics (`min_row_height`), not a hardcoded pixel count, so
+  it holds at any display scaling. A day that fits behaves exactly as before and
+  the scrollbar stays hidden. The wheel scrolls (pan/zoom were already off).
+- **`ink_on(fill)` in `style.py`** picks each label's ink by WCAG contrast ratio
+  between two tokens the system already had. Measured across every palette slot
+  in both its light and dark step: worst case `#2a78d6` at **4.4:1**, rest ≥5:1.
+- **`bar_height` 0.62 → 0.78** — bars carry text now, so the row space is better
+  spent on the bar than on the gap.
+- **The "now" caption was dropped.** With every row carrying text the
+  `InfiniteLine` label had nowhere to sit without covering an event; the red
+  dashed rule against an hour-labeled axis carries it alone.
+- **The hover tooltip stays**, covering very short events and long room names
+  that the 190px Y-axis gutter still hard-clips. It now reads the same
+  pre-formatted `times` string the bar does, so the two cannot disagree.
+- **Verified by rendering**, not just by tests: offscreen grabs (via
+  `WA_DontShowOnScreen`, so real fonts are used) of a light day, a 34-event day,
+  a 620px-wide window, the scrolled-to-bottom state, and dark mode. Report
+  switching, an empty report, a theme flip, and a building recolor were each
+  driven through their real code paths. 87/87 tests still pass.
+
+## Earlier Completed (2026-08-22 — Daily Events Excel source)
 
 - **New reader** `daily_events_excel.py` (`DailyEventsExcelProcessor`) reads the
   export's `Parameter Summary` (report date) and `Event List <date>` sheets.
@@ -189,7 +231,8 @@ on-display GUI check, and the exe rebuild that was already outstanding.
       checked in, so this was verified structurally and by the suite, not by a
       real end-to-end diff
 - [ ] Verify the overhauled UI on a real (scaled) display, dropping a PDF and an
-      export in one batch
+      export in one batch — now also: confirm the in-bar labels and the timeline
+      scrollbar on a real busy day
 - [ ] Rebuild the portable exe with the new Qt/pyqtgraph deps
 - [x] Refresh `documentation/README_GUI.md` and `QUICKSTART.md` for the staged UI
 - [x] Update the top-level README for the staged UI, Settings menu, and timeline
@@ -200,7 +243,9 @@ on-display GUI check, and the exe rebuild that was already outstanding.
 
 1. Run `python gui_wrapper.py`, process a real PDF **and** a real Excel export in
    one batch, open **View Timeline**, and confirm crispness on a scaled display
-   in both light and dark mode
+   in both light and dark mode. Check the in-bar labels specifically: real event
+   names are longer than the test fixtures, so watch where the ladder lands and
+   whether `MIN_NAME_CHARS` (9) is the right spill threshold in practice
 2. Rebuild exe (Qt needs no special flags; PyInstaller ships PySide6/pyqtgraph hooks):
    `pyinstaller --windowed --name SetupReportProcessor --icon=UUE.ico gui_wrapper.py`
    — confirm `UUE.ico` lands next to the exe (used for the window icon at runtime)
@@ -217,6 +262,8 @@ setup_report_processor.py    [status: split into EventScheduleProcessor + SetupR
 daily_events_excel.py        [status: new — Daily Events Excel export reader]
 gui_wrapper.py               [status: 3-stage MainWindow + Settings menu; copy now source-neutral]
 gui_components/              [status: worker dispatches via create_processor; drop_zone reads SUPPORTED_SUFFIXES]
+gui_components/gantt_labels.py [status: new — in-bar label painter, device-pixel layout]
+gui_components/gantt_window.py [status: bars labeled; row floor + vertical scroll]
 location_config.json         [status: stable, v2 format]
 test_setup_report_processor.py [status: stable, 87/87 passing]
 requirements.txt             [status: updated, +PySide6 +pyqtgraph]
@@ -226,6 +273,11 @@ build_release.bat            [status: new — builds + zips the portable release
 
 ## Recent Decisions
 
+- **2026-08-22**: Timeline bars carry their own labels, with a font-derived row
+  floor and scrolling instead of unbounded row compression (ADR-009)
+- **2026-08-22**: Label ink is derived from the bar fill by WCAG contrast
+  (`ink_on`), because the building palette spans too wide a luminance range for
+  any single label color
 - **2026-08-22**: Second event source via a shared base class and extension
   dispatch, not a parallel script (ADR-008)
 - **2026-08-22**: Excel `Setup Ready By` comes from `Event Start`; the whitelist

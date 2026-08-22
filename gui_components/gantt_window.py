@@ -6,6 +6,11 @@ Embedded pyqtgraph timeline of the day's events.
 One horizontal bar per event — location on the Y axis, time of day on the X
 axis — with a live current-time indicator.
 
+Each bar carries its own label — event name, room, and time range, laid out
+against the bar's pixel width so it re-fits on every resize and steps outside
+the bar when the event is too short to hold text. Hovering still shows the full
+card for whatever the pixels could not fit.
+
 Color encodes the **building** the event is in, which is a real, stable
 category, rather than the row's position in the list. Buildings are discovered
 from room-name prefixes and colored per the user's Building Colors setting (see
@@ -27,12 +32,14 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QScrollBar,
     QToolTip,
     QVBoxLayout,
     QWidget,
 )
 
 from .building_config import BuildingColors, prefix_of
+from .gantt_labels import BarLabels, min_row_height
 from .settings import GANTT
 from .style import SPACE, active_dark, tokens
 from .widgets import label as make_label
@@ -89,9 +96,14 @@ class GanttWindow(QMainWindow):
         # gray, so an unconfigured window uses the shipped assignments instead.
         self.buildings = buildings if buildings is not None else BuildingColors.defaults()
         self._datasets: Dict[str, List[dict]] = {}
-        self._bars: List[dict] = []   # hover lookup: x0, x1, y0, y1, and row data
+        # Shared by the hover lookup and the label painter: x0, x1, y0, y1,
+        # the row data, the resolved fill, and the formatted time range.
+        self._bars: List[dict] = []
         self._time_line: Optional[pg.InfiniteLine] = None
         self._x_range = (GANTT["x_start"], GANTT["x_end"])
+        self._row_count = 0
+        self._visible_rows = 0
+        self._windowing = False   # re-entrancy guard for _update_y_window
 
         self._build_ui()
 
@@ -145,7 +157,20 @@ class GanttWindow(QMainWindow):
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
         self.plot.scene().sigMouseMoved.connect(self._on_hover)
-        layout.addWidget(self.plot, stretch=1)
+        self.plot.getViewBox().sigResized.connect(self._update_y_window)
+
+        # A day with more events than fit at a readable row height scrolls,
+        # rather than compressing every row into an unlabelable sliver.
+        self.vscroll = QScrollBar(Qt.Vertical)
+        self.vscroll.hide()
+        self.vscroll.valueChanged.connect(self._update_y_window)
+        self.plot.viewport().installEventFilter(self)
+
+        plot_row = QHBoxLayout()
+        plot_row.setSpacing(SPACE["xs"])
+        plot_row.addWidget(self.plot, stretch=1)
+        plot_row.addWidget(self.vscroll)
+        layout.addLayout(plot_row, stretch=1)
 
         self.empty_label = make_label(
             "No events to show for this report.", "subtitle"
@@ -198,6 +223,8 @@ class GanttWindow(QMainWindow):
         self.plot.clear()
         self._time_line = None
         self._bars = []
+        self._row_count = 0
+        self.vscroll.hide()
         self._clear_legend()
 
         rows = self._datasets.get(report)
@@ -231,10 +258,18 @@ class GanttWindow(QMainWindow):
             ends.append(end)
             y0s.append(y0)
             y1s.append(y0 + bar_h)
-            brushes.append(QColor(self.buildings.color(building, self._dark)))
+            fill = self.buildings.color(building, self._dark)
+            brushes.append(QColor(fill))
             y_ticks.append((idx + 0.5, row.get("Location", "")))
             self._bars.append(
-                {"x0": start, "x1": end, "y0": y0, "y1": y0 + bar_h, "row": row}
+                {
+                    "x0": start, "x1": end, "y0": y0, "y1": y0 + bar_h,
+                    "row": row,
+                    "color": fill,            # the label picks its ink from this
+                    # Formatted once, so the bar and the tooltip can never
+                    # disagree about a time.
+                    "times": f"{_fmt_clock(start)} – {_fmt_clock(end)}",
+                }
             )
             idx += 1
 
@@ -250,6 +285,12 @@ class GanttWindow(QMainWindow):
             )
         )
 
+        # Name, room, and times painted onto the bars themselves, so the chart
+        # reads without a mouse. Hover still covers what the pixels cannot.
+        labels = BarLabels(self._bars, t["text_muted"])
+        labels.setZValue(10)
+        self.plot.addItem(labels)
+
         # X axis: clamp to the configured window but always include the data.
         x_start = min(GANTT["x_start"], int(min(starts)))
         x_end = max(GANTT["x_end"], int(max(ends)) + 1)
@@ -263,25 +304,65 @@ class GanttWindow(QMainWindow):
 
         # Y axis: one labeled row per event, first event on top.
         self.plot.getAxis("left").setTicks([y_ticks])
-        self.plot.setYRange(0, idx, padding=0.01)
         self.plot.getViewBox().invertY(True)
+        self._row_count = idx
+        self.vscroll.setValue(0)
+        self._update_y_window()
 
         # Current-time indicator.
+        # No "now" caption: every row carries text now, so the label had nowhere
+        # left to sit without covering an event. Against an hour-labeled axis a
+        # red dashed rule already reads as the current time.
         self._time_line = pg.InfiniteLine(
             angle=90, movable=False,
             pen=pg.mkPen(GANTT["time_line"], width=2, style=Qt.DashLine),
-            label="now",
-            labelOpts={
-                "position": 0.02,
-                "color": GANTT["time_line"],
-                "movable": False,
-                "fill": None,
-            },
         )
         self.plot.addItem(self._time_line)
         self._update_time_line()
 
         self._build_legend(seen_buildings)
+
+    def _update_y_window(self, *_):
+        """
+        Show as many rows as stay readable, and scroll for the rest.
+
+        The Y range used to be split across however many events there were, so a
+        busy day left every bar a few pixels tall — too short to label at all.
+        The floor comes from the label font itself (``min_row_height``), so it
+        holds at any display scaling. A day that fits behaves exactly as before
+        and the scrollbar stays hidden.
+        """
+        if self._windowing or self._row_count <= 0:
+            return
+        self._windowing = True
+        try:
+            height = self.plot.getViewBox().height()
+            min_row = min_row_height(GANTT["bar_height"], GANTT["min_row_px"])
+            # Before the first layout the viewbox has no height yet; showing
+            # every row is the right guess until sigResized corrects it.
+            fits = int(height // min_row) if height > 0 else self._row_count
+            self._visible_rows = max(1, min(fits, self._row_count))
+
+            scrolls = self._row_count > self._visible_rows
+            self.vscroll.setVisible(scrolls)
+            self.vscroll.setRange(0, self._row_count - self._visible_rows)
+            self.vscroll.setPageStep(self._visible_rows)
+            self.vscroll.setSingleStep(1)
+
+            # No padding: the window has to hold whole rows, or a sliver of the
+            # next event peeks in under the last one.
+            top = self.vscroll.value() if scrolls else 0
+            self.plot.setYRange(top, top + self._visible_rows, padding=0)
+        finally:
+            self._windowing = False
+
+    def eventFilter(self, obj, event):
+        # Pan and zoom are off, which leaves the wheel free to scroll the rows.
+        if event.type() == QEvent.Type.Wheel and self.vscroll.isVisible():
+            notches = event.angleDelta().y() / 120.0
+            self.vscroll.setValue(self.vscroll.value() - int(round(notches * 3)))
+            return True
+        return super().eventFilter(obj, event)
 
     def _update_time_line(self):
         if self._time_line is None:
@@ -337,7 +418,7 @@ class GanttWindow(QMainWindow):
                 name = row.get("EventName")
                 lines = [f"<b>{name}</b>"] if name else []
                 lines.append(row.get("Location", ""))
-                lines.append(f"{_fmt_clock(bar['x0'])} – {_fmt_clock(bar['x1'])}")
+                lines.append(bar["times"])
                 QToolTip.showText(QCursor.pos(), "<br>".join(lines), self.plot)
                 return
         QToolTip.hideText()
