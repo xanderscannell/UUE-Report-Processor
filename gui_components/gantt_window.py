@@ -24,8 +24,8 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QRect, Qt, QTimer
-from PySide6.QtGui import QColor, QCursor
+from PySide6.QtCore import QEvent, QRect, QSize, Qt, QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -418,9 +418,9 @@ class GanttWindow(QMainWindow):
         """
         Show the hover card for the bar under the cursor, and hold it there.
 
-        The card stays until the cursor leaves the bar: either a move that lands
-        elsewhere, handled here, or a move out of the widget entirely, handled by
-        the Leave case in ``eventFilter``.
+        The card follows the cursor, and stays until it leaves the bar: either a
+        move that lands elsewhere, handled here, or a move out of the widget
+        entirely, handled by the Leave case in ``eventFilter``.
         """
         vb = self.plot.getViewBox()
         if not self.plot.sceneBoundingRect().contains(scene_pos):
@@ -436,9 +436,22 @@ class GanttWindow(QMainWindow):
                 lines = [f"<b>{name}</b>"] if name else []
                 lines.append(row.get("Location", ""))
                 lines.append(bar["times"])
+                # Anchored to the event's own position rather than to
+                # QCursor.pos(), so the card cannot drift from the bar it
+                # describes if the events ever lag the pointer.
+                local = self.plot.mapFromScene(scene_pos)
+
+                # Qt treats a repeat showText with unchanged text as a no-op, so
+                # the card would otherwise sit wherever it first appeared. A
+                # one-pixel rect at the cursor makes Qt's own tipChanged() true
+                # on the very next move, which is what repositions it — and Qt's
+                # placement keeps it clear of the screen edges for free. Leaving
+                # is still our job, not this rect's: the misses below and the
+                # Leave case in eventFilter do the hiding.
                 QToolTip.showText(
-                    QCursor.pos(), "<br>".join(lines), self.plot,
-                    QRect(),                 # no rect: leaving is our job, not Qt's
+                    self.plot.viewport().mapToGlobal(local),
+                    "<br>".join(lines), self.plot,
+                    QRect(local, QSize(1, 1)),
                     TOOLTIP_HOLD_MS,
                 )
                 return

@@ -54,8 +54,19 @@ on-display GUI check, and the exe rebuild that was already outstanding.
   `msecShowTime` to `showText` overrides it; hiding is driven by `_on_hover`
   for a move onto another bar or into empty space, and by a `QEvent.Leave`
   case in `eventFilter` for a cursor that leaves the plot without a final move
-  event landing off a bar. Verified against all six paths — hold past 6s,
-  same-card identity, swap between bars, both hide routes, and re-show.
+  event landing off a bar.
+- **The card follows the cursor.** Qt treats a repeat `showText` with unchanged
+  text as a no-op, so it used to sit wherever it first appeared. Passing a
+  one-pixel `rect` at the cursor makes Qt's own `tipChanged()` true on the next
+  move, which is what repositions it — and Qt's `placeTip` keeps it clear of
+  screen edges for free. The anchor is the *event's* mapped position, not
+  `QCursor.pos()`, so the card cannot drift from the bar it describes.
+- **Verified against all eight paths** — appears, follows along one bar, keeps
+  its text on the same bar, holds past 6s idle, swaps between bars, both hide
+  routes, and re-show. Note for future GUI probes: `sigMouseMoved` fires from
+  the *real* pointer whenever `processEvents()` runs, so a test window that
+  opens under the cursor will corrupt every reading. Disconnect the signal and
+  drive `_on_hover` synthetically.
 - **Verified by rendering**, not just by tests: offscreen grabs (via
   `WA_DontShowOnScreen`, so real fonts are used) of a light day, a 34-event day,
   a 620px-wide window, the scrolled-to-bottom state, and dark mode. Report
@@ -284,9 +295,10 @@ build_release.bat            [status: new — builds + zips the portable release
 - **2026-08-22**: Timeline bars carry their own labels, with a font-derived row
   floor and scrolling instead of unbounded row compression (ADR-009)
 - **2026-08-22**: The Gantt hover card is held open via `showText`'s
-  `msecShowTime` and hidden by our own hit-testing, rather than letting Qt's
-  expire timer decide — it is a fallback for what a bar could not print, so it
-  has to last as long as the cursor is on the bar
+  `msecShowTime`, follows the cursor via a one-pixel `rect` that forces Qt's
+  `tipChanged()`, and is hidden by our own hit-testing rather than by Qt's
+  expire timer — it is a fallback for what a bar could not print, so it has to
+  last as long as the cursor is on the bar
 - **2026-08-22**: Label ink is derived from the bar fill by WCAG contrast
   (`ink_on`), because the building palette spans too wide a luminance range for
   any single label color
