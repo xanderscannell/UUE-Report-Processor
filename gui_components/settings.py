@@ -37,7 +37,7 @@ GANTT = {
     "x_end": 24,     # latest hour normally shown (midnight)
     "bar_height": 0.78,                # bars carry their own labels, so they earn the height
     "min_row_px": 26,                  # floor under the font-derived row height
-    "left_axis_width": 190,            # room for location names on the Y axis
+    "left_axis_width": 104,            # room for a date label on the Y axis
     "grid_alpha": 0.5,                 # hour gridlines, tinting the axis pen
     "grid_alpha_y": 0.22,              # row gridlines — secondary, so fainter
     "time_line": "#d03b3b",            # current-time indicator

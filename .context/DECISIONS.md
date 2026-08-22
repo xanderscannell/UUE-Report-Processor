@@ -467,3 +467,64 @@ Two properties of the chart made "just draw the text" insufficient:
 **Files**:
 `gui_components/gantt_labels.py` (new), `gui_components/gantt_window.py`,
 `gui_components/style.py:ink_on`, `gui_components/settings.py:GANTT`
+
+## ADR-010: The Y axis names the day, not the room
+
+**Date**: 2026-08-22
+**Status**: Accepted
+
+**Context**:
+ADR-009 put the room on the bar itself, which made the Y axis's per-event room
+labels a second copy of the same fact — and an expensive one, since
+`left_axis_width` reserved 190px of the chart for them. The intended direction
+is a timeline that can show more than one day at once, and a per-event axis has
+nowhere to put a date.
+
+**Decision**:
+- **One tick per *date group*, not per event.** `_render` builds
+  `self._date_groups` as `[(label, first_row, last_row)]` — one entry today,
+  because one report is one day. A second day is a second entry, not a rewrite.
+- **The label is pinned to the middle of the *visible* part of its block**, not
+  to the block's true center (`_place_date_ticks`, called from
+  `_update_y_window` so it re-runs on every scroll and resize). Pinned to the
+  true center, scrolling through a long day scrolls that day's own label off
+  the chart.
+- **Row gridlines survive as an unlabeled minor tick level.** Without them the
+  only horizontal line on the chart would be the one through the date label.
+- **`left_axis_width` 190 → 104**, which is what `'Tue, Jun 23'` needs. The
+  reclaimed 86px goes straight into bar width, so more bars fit their text.
+- **The room outranks the times inside the bar when only one fits.** Previously
+  the times rode the right of the headline row and the room got the second
+  line — but the second line needs vertical space a busy day does not have, so
+  with the axis no longer carrying the room it would have appeared nowhere.
+  Two lines: times right, room below. One line: room right, times give way.
+- **Spilled labels carry the room too**, joined to the name with a middot —
+  outside the bar there is no second line and no axis to fall back on.
+
+**Rationale**:
+- The X axis already places an event to within a few minutes, so the exact time
+  is a refinement. Nothing else names the room, so it is the field that cannot
+  be dropped.
+- Grouping by date is the only structure that lets a second day be added
+  without touching the axis code again; the rows themselves stay one-per-event.
+- Pinning inside the viewport is the same behavior a sticky group header has,
+  and it falls out of the fact that `_update_y_window` already knows the
+  visible range.
+
+**Consequences**:
+- (+) 86px of chart width recovered, directly improving the in-bar labels.
+- (+) Multi-day needs a date on the gantt rows and a grouped `_date_groups`
+  build; the axis, the pinning, and the scrolling already work. Verified by
+  driving `_place_date_ticks` with two simulated day blocks.
+- (−) The room is now only ever visible on the bar or in the hover card. On a
+  bar too narrow for ~9 characters it rides the spilled label, so it is never
+  actually lost, but it is no longer in one predictable column.
+- (−) The exact times now appear only on two-line bars, which need a light day
+  to have the height for it. A compact range (`9:00–11:30 AM`, one meridiem
+  when both ends share it) would make them fit far more often — not done here.
+- (−) The gantt rows still carry no date field; the label comes from the report
+  label via `_axis_date`. Multi-day will need `create_gantt_rows` to emit one.
+
+**Files**:
+`gui_components/gantt_window.py:_place_date_ticks`, `:_axis_date`,
+`gui_components/gantt_labels.py:_paint_bar`, `gui_components/settings.py:GANTT`

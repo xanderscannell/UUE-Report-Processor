@@ -3,7 +3,7 @@ Gantt Chart Window
 ==================
 Embedded pyqtgraph timeline of the day's events.
 
-One horizontal bar per event — location on the Y axis, time of day on the X
+One horizontal bar per event — the **date** on the Y axis, time of day on the X
 axis — with a live current-time indicator.
 
 Each bar carries its own label — event name, room, and time range, laid out
@@ -11,13 +11,16 @@ against the bar's pixel width so it re-fits on every resize and steps outside
 the bar when the event is too short to hold text. Hovering still shows the full
 card for whatever the pixels could not fit.
 
+The Y axis names the day rather than the room, because the room is now printed
+on the bar itself. That leaves the axis free to stack more than one day, which
+is the shape a multi-day timeline needs; today there is exactly one block.
+
 Color encodes the **building** the event is in, which is a real, stable
 category, rather than the row's position in the list. Buildings are discovered
 from room-name prefixes and colored per the user's Building Colors setting (see
 ``building_config.py``); two prefixes given the same color collapse into one
 legend entry, which is how "UC and RUC are the same building" is expressed.
-Every bar is also directly labeled on the Y axis, so identity never rests on
-color alone.
+Every bar also carries its room as text, so identity never rests on color alone.
 """
 
 from datetime import datetime
@@ -109,6 +112,8 @@ class GanttWindow(QMainWindow):
         self._x_range = (GANTT["x_start"], GANTT["x_end"])
         self._row_count = 0
         self._visible_rows = 0
+        # (label, first row, last row) per day, for the Y axis. One entry today.
+        self._date_groups: List[tuple] = []
         self._windowing = False   # re-entrancy guard for _update_y_window
 
         self._build_ui()
@@ -152,7 +157,7 @@ class GanttWindow(QMainWindow):
         layout.addLayout(self.legend_row)
 
         self.plot = pg.PlotWidget()
-        # Reserve room for location names; pyqtgraph clips them otherwise.
+        # Reserve room for the date label; pyqtgraph clips it otherwise.
         left = self.plot.getAxis("left")
         left.setStyle(tickTextOffset=8, tickLength=0)
         left.setWidth(GANTT["left_axis_width"])
@@ -230,6 +235,7 @@ class GanttWindow(QMainWindow):
         self._time_line = None
         self._bars = []
         self._row_count = 0
+        self._date_groups = []
         self.vscroll.hide()
         self._clear_legend()
 
@@ -243,7 +249,7 @@ class GanttWindow(QMainWindow):
 
         bar_h = GANTT["bar_height"]
 
-        starts, ends, y0s, y1s, brushes, y_ticks = [], [], [], [], [], []
+        starts, ends, y0s, y1s, brushes = [], [], [], [], []
         seen_buildings = []
 
         idx = 0
@@ -266,7 +272,6 @@ class GanttWindow(QMainWindow):
             y1s.append(y0 + bar_h)
             fill = self.buildings.color(building, self._dark)
             brushes.append(QColor(fill))
-            y_ticks.append((idx + 0.5, row.get("Location", "")))
             self._bars.append(
                 {
                     "x0": start, "x1": end, "y0": y0, "y1": y0 + bar_h,
@@ -308,9 +313,10 @@ class GanttWindow(QMainWindow):
         # clipped by the plot edge.
         self.plot.setXRange(x_start - 0.35, x_end + 0.35, padding=0)
 
-        # Y axis: one labeled row per event, first event on top.
-        self.plot.getAxis("left").setTicks([y_ticks])
+        # Y axis: the day these rows belong to, first event on top. One group
+        # per date, so a second day is a second entry rather than a rewrite.
         self.plot.getViewBox().invertY(True)
+        self._date_groups = [(self._axis_date(report), 0, idx)]
         self._row_count = idx
         self.vscroll.setValue(0)
         self._update_y_window()
@@ -359,8 +365,29 @@ class GanttWindow(QMainWindow):
             # next event peeks in under the last one.
             top = self.vscroll.value() if scrolls else 0
             self.plot.setYRange(top, top + self._visible_rows, padding=0)
+            self._place_date_ticks(top, top + self._visible_rows)
         finally:
             self._windowing = False
+
+    def _place_date_ticks(self, top: int, bottom: int):
+        """
+        Label the Y axis with the day each block of rows belongs to.
+
+        A label is pinned to the middle of the *visible* part of its block, not
+        to the block's true center, so scrolling through a long day never
+        scrolls that day's own label off the chart. With more than one day
+        loaded, each block keeps its own label and they separate as you scroll.
+        """
+        major = []
+        for label, first, last in self._date_groups:
+            if not label or last <= top or first >= bottom:
+                continue                    # this day is scrolled out of view
+            major.append(((max(first, top) + min(last, bottom)) / 2, label))
+
+        # Unlabeled minor ticks keep the row gridlines that guide the eye across
+        # a wide chart; without them the only line would be through a label.
+        minor = [(y, "") for y in range(top, bottom + 1)]
+        self.plot.getAxis("left").setTicks([major, minor])
 
     def eventFilter(self, obj, event):
         # A cursor can leave the plot without a final move event landing off a
@@ -502,6 +529,20 @@ class GanttWindow(QMainWindow):
             return datetime.strptime(report, "%m-%d-%y").strftime("%A, %B %d, %Y")
         except (ValueError, TypeError):
             return report or ""
+
+    @staticmethod
+    def _axis_date(report: str) -> str:
+        """
+        Compact date for the Y axis, e.g. 'Tue, Jun 23'.
+
+        Falls back to the raw report label, same as the header does, when it is
+        not a recognizable date.
+        """
+        try:
+            day = datetime.strptime(report, "%m-%d-%y")
+        except (ValueError, TypeError):
+            return report or ""
+        return f"{day:%a, %b} {day.day}"
 
     @staticmethod
     def _fmt_hour(h: int) -> str:

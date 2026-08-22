@@ -4,7 +4,7 @@
 
 ## Current Position
 
-**Phase**: Timeline legibility — labels on the bars themselves (ADR-009)
+**Phase**: Timeline legibility, and groundwork for a multi-day view (ADR-009, ADR-010)
 **Subphase**: Built and verified against rendered output; awaiting an on-display check
 **Progress**: The app now reads the events database's `Daily Events - Excel`
 export alongside Daily Setup Report PDFs, dispatched by file extension. 87/87
@@ -12,7 +12,34 @@ tests pass, including all 56 pre-existing ones **unedited**. Docs and ADR-008
 are current. Pending: a real-export soak beyond the single sample, an
 on-display GUI check, and the exe rebuild that was already outstanding.
 
-## Recently Completed (2026-08-22 — in-bar timeline labels)
+## Recently Completed (2026-08-22 — date on the Y axis)
+
+- **The Y axis names the day, not the room** (ADR-010). ADR-009 put the room on
+  the bar, which made the per-event axis labels a second copy of the same fact
+  — and an expensive one, since `left_axis_width` reserved 190px for them.
+- **One tick per date group.** `_render` builds `self._date_groups` as
+  `[(label, first_row, last_row)]` — one entry today, because one report is one
+  day. A second day is a second entry, not a rewrite.
+- **The label is pinned to the middle of the *visible* part of its block**
+  (`_place_date_ticks`, called from `_update_y_window` so it re-runs on every
+  scroll and resize). Pinned to the true center, scrolling a long day scrolls
+  that day's own label off the chart.
+- **`left_axis_width` 190 → 104** — what `'Tue, Jun 23'` needs. The reclaimed
+  86px goes straight into bar width, so more bars fit their text.
+- **The room outranks the times inside the bar when only one fits.** The second
+  line needs vertical space a busy day does not have, so with the axis no
+  longer carrying the room it would otherwise have appeared nowhere. Two lines:
+  times right, room below. One line: room right, times give way. Spilled labels
+  carry the room too, joined to the name with a middot.
+- **Multi-day is now an axis-free change**: give the gantt rows a date and build
+  `_date_groups` per day. Verified by driving `_place_date_ticks` with two
+  simulated blocks — both labels appear, each pinned to its own visible portion,
+  and a block scrolled fully out drops its label.
+- **Known gap**: exact times now appear only on two-line bars, which need a
+  light day for the height. A compact range (`9:00–11:30 AM`, one meridiem when
+  both ends share it) would make them fit far more often.
+
+## Earlier Completed (2026-08-22 — in-bar timeline labels)
 
 - **Bars carry their own labels** (ADR-009). New `gui_components/gantt_labels.py`
   paints the event name, room, and time range onto each bar. The event name used
@@ -292,6 +319,10 @@ build_release.bat            [status: new — builds + zips the portable release
 
 ## Recent Decisions
 
+- **2026-08-22**: The Gantt Y axis names the day, grouped so a second day is a
+  second entry rather than an axis rewrite (ADR-010)
+- **2026-08-22**: Inside a bar the room outranks the time range when only one
+  fits — the X axis already places the event, nothing else names the room
 - **2026-08-22**: Timeline bars carry their own labels, with a font-derived row
   floor and scrolling instead of unbounded row compression (ADR-009)
 - **2026-08-22**: The Gantt hover card is held open via `showText`'s

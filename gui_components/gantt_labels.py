@@ -14,11 +14,15 @@ edge, the room sits underneath::
 
 Text is laid out against each bar's measured **pixel** box, not its width in
 hours, so it re-fits itself on every window resize and steps down a ladder as
-the room runs out: all three fields, then name and times, then the name alone
-elided, and finally — for a fifteen-minute event that can never hold text — the
-name spills into the whitespace beside the bar, the way a short cue gets its
-label in a printed run sheet's margin. Without that last rung only the long
-events would ever be labeled.
+the space runs out: all three fields, then the name with whichever single field
+fits beside it, then the name alone elided, and finally — for a fifteen-minute
+event that can never hold text — the label spills into the whitespace beside
+the bar, the way a short cue gets its label in a printed run sheet's margin.
+Without that last rung only the long events would ever be labeled.
+
+The room outranks the time range whenever only one of them fits. The X axis
+already places an event to within a few minutes, but since the Y axis became a
+date, nothing outside the bar says which room an event is in.
 
 ``pg.BarGraphItem`` cannot draw text at all, and a ``pg.TextItem`` per bar
 cannot measure the bar it belongs to, so neither can elide. A ``GraphicsObject``
@@ -138,6 +142,10 @@ class BarLabels(pg.GraphicsObject):
         if not headline or rect.height() < self._fm_name.height():
             return
 
+        # Outside the bar there is no second line to put the room on, and the Y
+        # axis no longer carries it either, so it rides along with the name.
+        spilled = " · ".join(part for part in (name, location) if part)
+
         inner = rect.width() - 2 * PAD_X
         head_w = self._fm_name.horizontalAdvance(headline)
 
@@ -146,7 +154,7 @@ class BarLabels(pg.GraphicsObject):
         # minute event is a dozen pixels wide — hands its name to the whitespace
         # beside it.
         if inner < self._floor_w:
-            self._paint_spill(p, rect, headline, view_px)
+            self._paint_spill(p, rect, spilled, view_px)
             return
 
         ink = QColor(ink_on(bar["color"]))
@@ -176,15 +184,21 @@ class BarLabels(pg.GraphicsObject):
             head_h,
         )
 
-        # Times ride the right edge of the headline row, and are the first thing
-        # dropped when the bar narrows — the name never gives up characters to
-        # make room for them.
-        times_w = self._fm_meta.horizontalAdvance(times) if times else 0
-        if times and head_w + GAP + times_w <= inner:
-            p.setFont(self._font_meta)
-            p.setPen(sub_ink)
-            p.drawText(head, Qt.AlignRight | Qt.AlignVCenter, times)
-            head.setWidth(inner - GAP - times_w)
+        # One field rides the right edge of the headline row. On two lines the
+        # room already has its own line, so the times go here; on one line the
+        # room takes the slot and the times give way, because the X axis already
+        # places the event and nothing else names the room. Either way the name
+        # never gives up characters to make space.
+        for trailer in ([times] if two_line else [sub, times]):
+            if not trailer:
+                continue
+            trailer_w = self._fm_meta.horizontalAdvance(trailer)
+            if head_w + GAP + trailer_w <= inner:
+                p.setFont(self._font_meta)
+                p.setPen(sub_ink)
+                p.drawText(head, Qt.AlignRight | Qt.AlignVCenter, trailer)
+                head.setWidth(inner - GAP - trailer_w)
+                break
 
         p.setFont(self._font_name)
         p.setPen(ink)
