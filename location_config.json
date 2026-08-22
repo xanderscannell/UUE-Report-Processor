@@ -3,40 +3,116 @@
     "version": 2,
     "locations": [
         {
-            "name": "UC 1225",
+            "name": "AB Chancellor's Pond",
+            "enabled": false
+        },
+        {
+            "name": "AB Location/Space",
+            "enabled": false
+        },
+        {
+            "name": "CASL",
+            "enabled": false
+        },
+        {
+            "name": "CASL 1030",
+            "enabled": false
+        },
+        {
+            "name": "Diag Field",
+            "enabled": false
+        },
+        {
+            "name": "DLB 1050",
+            "enabled": false
+        },
+        {
+            "name": "DLB 1120",
+            "enabled": false
+        },
+        {
+            "name": "EIC Location/Space",
+            "enabled": false
+        },
+        {
+            "name": "ELB Location/Space",
+            "enabled": false
+        },
+        {
+            "name": "ELB West Lawn",
+            "enabled": false
+        },
+        {
+            "name": "FCS 180",
             "enabled": true
         },
         {
-            "name": "UC 1227",
+            "name": "FCS 255",
             "enabled": true
         },
         {
-            "name": "UC 2190",
+            "name": "FCS 257",
             "enabled": true
         },
         {
-            "name": "UC Stage",
+            "name": "FCS 258",
             "enabled": true
         },
         {
-            "name": "UC Kochoff Hall",
+            "name": "FCS Dining Rm A",
             "enabled": true
         },
         {
-            "name": "UC Kochoff Hall A",
+            "name": "FCS Dining Rm D",
             "enabled": true
         },
         {
-            "name": "UC Kochoff Hall B",
+            "name": "FCS Michigan East",
             "enabled": true
         },
         {
-            "name": "UC Kochoff Hall C",
+            "name": "FCS Michigan Room",
             "enabled": true
         },
         {
-            "name": "UC Lounge",
+            "name": "FCS Michigan West",
             "enabled": true
+        },
+        {
+            "name": "FH Gym",
+            "enabled": false
+        },
+        {
+            "name": "MI UMD Bus Stop",
+            "enabled": false
+        },
+        {
+            "name": "ML",
+            "enabled": false
+        },
+        {
+            "name": "ML Location/Space",
+            "enabled": false
+        },
+        {
+            "name": "Notice",
+            "enabled": false
+        },
+        {
+            "name": "NSBS Location/Space",
+            "enabled": false
+        },
+        {
+            "name": "PEC 1130",
+            "enabled": false
+        },
+        {
+            "name": "PEC 1330",
+            "enabled": false
+        },
+        {
+            "name": "Pk Lot F",
+            "enabled": false
         },
         {
             "name": "RUC 1150 (Victors Den)",
@@ -63,15 +139,75 @@
             "enabled": true
         },
         {
-            "name": "FCS 180",
+            "name": "South CASL Field",
+            "enabled": false
+        },
+        {
+            "name": "Special",
+            "enabled": false
+        },
+        {
+            "name": "UC 1225",
             "enabled": true
         },
         {
-            "name": "FCS Dining Rm D",
+            "name": "UC 1227",
             "enabled": true
         },
         {
-            "name": "FCS Michigan East",
+            "name": "UC 2190",
+            "enabled": true
+        },
+        {
+            "name": "UC A-Special Notice",
+            "enabled": true
+        },
+        {
+            "name": "UC Atrium",
+            "enabled": true
+        },
+        {
+            "name": "UC Atrium/Lounge",
+            "enabled": true
+        },
+        {
+            "name": "UC Dining Room",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall A",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall AB",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall B",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall BC",
+            "enabled": true
+        },
+        {
+            "name": "UC Kochoff Hall C",
+            "enabled": true
+        },
+        {
+            "name": "UC Lounge",
+            "enabled": true
+        },
+        {
+            "name": "UC Patio",
+            "enabled": true
+        },
+        {
+            "name": "UC Stage",
             "enabled": true
         },
         {
@@ -91,20 +227,8 @@
             "enabled": false
         },
         {
-            "name": "Special",
+            "name": "UM-Dearborn Plaza",
             "enabled": false
-        },
-        {
-            "name": "Notice",
-            "enabled": false
-        },
-        {
-            "name": "UC Dining Room",
-            "enabled": true
-        },
-        {
-            "name": "UC A-Special Notice",
-            "enabled": true
         }
     ],
     "buildings": {

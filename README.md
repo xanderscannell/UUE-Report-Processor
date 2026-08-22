@@ -75,8 +75,11 @@ Click **View Timeline** on the results screen to open the day's schedule as a Ga
 - Bars are colored by building, with a legend. Colors are configurable — see
   **Building Colors** below
 - Time-of-day axis covering 6 AM to midnight, widened automatically if events fall outside it
-- A dashed line marks the current time, refreshing every minute
-- Hover a bar to hold a card with the full event name, room, and exact times
+- A dashed line marks the current time, refreshing every minute; it crosses only
+  the day it belongs to
+- Rows never shrink below a readable height — a busy day scrolls instead
+- Hover a bar to hold a card with the full event name, room, and exact times; it
+  follows the cursor and stays until you leave the bar
 - **Several days at once** — the date is on the left axis, so a weekend stacks
   into one chart. Drop one file per day (the database exports one day at a
   time); a **Day** filter appears for narrowing to a single day

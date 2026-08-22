@@ -6,7 +6,9 @@ Versions follow [semantic versioning](https://semver.org/): the major number
 moves when the interface or the deliverable changes shape, the minor when
 features are added compatibly.
 
-## [4.2.0] - 2026-08-22: Read event data straight from the database export
+## [4.2.0] - 2026-08-22: Database exports, and a timeline that reads at a glance
+
+### A second event source
 
 - **New second event source.** The app now reads the events database's **Daily Events Excel export** (`.xlsx`) as well as Daily Setup Report PDFs. No more depending on PDF layout for the daily run
 - The file type is detected from its extension — there is no mode to switch. Drop a PDF, an export, or a mix of both into the same batch and each is read the right way
@@ -17,7 +19,24 @@ features are added compatibly.
 - If the report definition changes and a needed column disappears, the file fails with a message naming the missing column instead of failing obscurely
 - **Note**: the export has no setup-start column, so for Excel sources **Setup Ready By is the event's own start time**. Schedules built from an export carry no setup lead time
 - **Note**: the export covers all campus locations, so it contains many rooms the PDF never did (Fieldhouse, parking lots). They are filtered out until enabled in **Settings → Location Whitelist…**
-- Test suite grew from 56 to 87 tests
+
+### A timeline you can read without a mouse
+
+- **Every bar is labeled where it sits** — the event name, its room, and its times are painted onto the bar itself. The chart now reads at a glance and survives a screenshot, which is what it is for when it is left up on a display
+- As much is shown as the bar is wide, stepping down as room runs out. An event too short to hold any text — a fifteen-minute room turn — gets its label in the space beside the bar instead, so short events are labeled too
+- **The left axis names the day** rather than the room, since the room moved onto the bar. That freed the axis to hold more than one date, and gave the bars about 90 more pixels of width
+- **A whole weekend on one chart.** The database exports one day per file, so drop one file per day and process them together: the days stack, oldest at the top, each labeled with its date and separated by a rule, all sharing one time-of-day axis. A **Day** filter appears for narrowing to a single day
+- Days are keyed by the date their events carry, so the order you drop the files in does not matter. A re-export of a day already loaded replaces it rather than showing it twice
+- **Rows no longer shrink out of legibility.** A busy day used to divide the window between however many events there were, until the bars were a few pixels tall; rows now stop at a readable height and the chart scrolls past that, mouse wheel included
+- **Hovering holds.** The hover card stays for as long as the pointer is on the bar — it used to disappear after about a second — and follows the cursor while it is there
+- The current-time marker crosses only the day it belongs to, and in the small hours stays with the schedule that is still running rather than jumping to the new date
+- Label colors are chosen per building for contrast, so the text stays readable on every palette color in both light and dark themes
+- Removed the timeline's "now" caption: with every row carrying text it had nowhere left to sit without covering an event, and a red dashed rule against an hour-labeled axis already says it
+
+### Under the hood
+
+- One shared base class now backs both readers, so the whitelist, sorting, output and timeline are written once and a third source would be a subclass rather than a fork
+- Test suite grew from 56 to 100 tests
 
 ## [4.1.0] - 2026-08-04: Keep awake + persistent preferences
 
@@ -66,6 +85,7 @@ features are added compatibly.
 - Excel/CSV export
 - Comprehensive logging
 
+[4.2.0]: https://github.com/xanderscannell/UUE-Report-Processor/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/xanderscannell/UUE-Report-Processor/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/xanderscannell/UUE-Report-Processor/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/xanderscannell/UUE-Report-Processor/compare/v2.0.0...v3.0.0

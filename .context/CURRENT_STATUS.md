@@ -4,8 +4,9 @@
 
 ## Current Position
 
-**Phase**: Multi-day timeline (ADR-011), on the legibility work of ADR-009/010
-**Subphase**: Built and verified against the real weekend exports; awaiting an on-display check
+**Phase**: Preparing the v4.2.0 release
+**Subphase**: Changelog and docs current; remaining work is the on-display check,
+the tag, and the exe rebuild
 **Progress**: The app now reads the events database's `Daily Events - Excel`
 export alongside Daily Setup Report PDFs, dispatched by file extension. 87/87
 tests pass, including all 56 pre-existing ones **unedited**. Docs and ADR-008
@@ -203,9 +204,8 @@ on-display GUI check, and the exe rebuild that was already outstanding.
 - **`CHANGELOG.md` is now the release history**. The README's Version History
   section was migrated out verbatim and replaced with a link; the README keeps
   only a pointer and the current version number.
-- Keep-awake and persistent preferences are recorded there as **v4.1.0**.
-  Not yet tagged — `git tag v4.1.0` is still pending, and the changelog's
-  `[4.1.0]` compare link resolves once it exists.
+- Keep-awake and persistent preferences are recorded there as **v4.1.0**,
+  tagged. Its changelog compare link resolves.
 - v4.0.0 is dated 2026-08-04 in the changelog, matching its commit and tag; the
   README had it as 2026-08-05, which would have put v4.1.0 before it.
 
@@ -315,6 +315,27 @@ on-display GUI check, and the exe rebuild that was already outstanding.
 - **Fixed all 49 tests**: Including 2 pre-existing setup time extraction test failures (leading whitespace vs `^` anchor)
 - **GUI layout fixes**: Action buttons visible and properly ordered above Process Files button
 - **v1 backward compatibility**: Processor can still load legacy v1 config files
+
+## Release checklist — v4.2.0
+
+Everything in `git log v4.1.0..HEAD` is 4.2.0: the Daily Events Excel source
+plus the timeline work (in-bar labels, the date axis, multi-day, the hover card).
+
+- [x] `CHANGELOG.md` — 4.2.0 covers all seven commits, with its compare link
+- [x] `README.md` / `documentation/README_GUI.md` describe the current timeline
+- [x] README already states the current release is v4.2.0
+- [x] 100/100 tests pass
+- [ ] Open the app on a real (scaled) display: drop the two weekend exports,
+      check the stacked timeline, the Day filter, the in-bar labels and the
+      hover card
+- [ ] `git tag v4.2.0` (annotated, to match the earlier tags)
+- [ ] `build_release.bat` — rebuild the portable exe with the Qt/pyqtgraph deps
+- [ ] Copy `location_config.json` into `dist/SetupReportProcessor/`
+- [ ] Smoke-test the exe (window opens, timeline opens), then zip and distribute
+- [ ] `git push` and `git push --tags`
+
+Note: nothing in the app source carries a version string — the version lives in
+`CHANGELOG.md`, the README pointer, and the tag. There is nothing to bump in code.
 
 ## In Progress
 
