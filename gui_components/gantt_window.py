@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
+from PySide6.QtCore import QEvent, QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -45,6 +45,12 @@ from .style import SPACE, active_dark, tokens
 from .widgets import label as make_label
 
 pg.setConfigOptions(antialias=True)
+
+# The hover card is the fallback for whatever a bar was too small to print, so
+# it has to stay put for as long as the cursor is on the bar. Qt's own expire
+# timer pulls it after about three seconds; hiding is driven by _on_hover and
+# the Leave handler instead, so this only has to outlast any plausible hover.
+TOOLTIP_HOLD_MS = 24 * 60 * 60 * 1000
 
 
 def _to_hours(hhmm: str) -> Optional[float]:
@@ -357,6 +363,11 @@ class GanttWindow(QMainWindow):
             self._windowing = False
 
     def eventFilter(self, obj, event):
+        # A cursor can leave the plot without a final move event landing off a
+        # bar, which would strand the held card with nothing left to hide it.
+        if event.type() == QEvent.Type.Leave:
+            QToolTip.hideText()
+
         # Pan and zoom are off, which leaves the wheel free to scroll the rows.
         if event.type() == QEvent.Type.Wheel and self.vscroll.isVisible():
             notches = event.angleDelta().y() / 120.0
@@ -404,7 +415,13 @@ class GanttWindow(QMainWindow):
 
     # -- hover -----------------------------------------------------------
     def _on_hover(self, scene_pos):
-        """Show a tooltip for the bar under the cursor."""
+        """
+        Show the hover card for the bar under the cursor, and hold it there.
+
+        The card stays until the cursor leaves the bar: either a move that lands
+        elsewhere, handled here, or a move out of the widget entirely, handled by
+        the Leave case in ``eventFilter``.
+        """
         vb = self.plot.getViewBox()
         if not self.plot.sceneBoundingRect().contains(scene_pos):
             QToolTip.hideText()
@@ -419,7 +436,11 @@ class GanttWindow(QMainWindow):
                 lines = [f"<b>{name}</b>"] if name else []
                 lines.append(row.get("Location", ""))
                 lines.append(bar["times"])
-                QToolTip.showText(QCursor.pos(), "<br>".join(lines), self.plot)
+                QToolTip.showText(
+                    QCursor.pos(), "<br>".join(lines), self.plot,
+                    QRect(),                 # no rect: leaving is our job, not Qt's
+                    TOOLTIP_HOLD_MS,
+                )
                 return
         QToolTip.hideText()
 

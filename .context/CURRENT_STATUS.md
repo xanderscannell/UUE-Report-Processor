@@ -48,6 +48,14 @@ on-display GUI check, and the exe rebuild that was already outstanding.
 - **The hover tooltip stays**, covering very short events and long room names
   that the 190px Y-axis gutter still hard-clips. It now reads the same
   pre-formatted `times` string the bar does, so the two cannot disagree.
+- **The hover card is now held open** for as long as the cursor is on the bar.
+  Qt's own expire timer was pulling it after ~3.5s (measured, not assumed —
+  the default is text-length-derived, not the 10s the docs imply). Passing
+  `msecShowTime` to `showText` overrides it; hiding is driven by `_on_hover`
+  for a move onto another bar or into empty space, and by a `QEvent.Leave`
+  case in `eventFilter` for a cursor that leaves the plot without a final move
+  event landing off a bar. Verified against all six paths — hold past 6s,
+  same-card identity, swap between bars, both hide routes, and re-show.
 - **Verified by rendering**, not just by tests: offscreen grabs (via
   `WA_DontShowOnScreen`, so real fonts are used) of a light day, a 34-event day,
   a 620px-wide window, the scrolled-to-bottom state, and dark mode. Report
@@ -275,6 +283,10 @@ build_release.bat            [status: new — builds + zips the portable release
 
 - **2026-08-22**: Timeline bars carry their own labels, with a font-derived row
   floor and scrolling instead of unbounded row compression (ADR-009)
+- **2026-08-22**: The Gantt hover card is held open via `showText`'s
+  `msecShowTime` and hidden by our own hit-testing, rather than letting Qt's
+  expire timer decide — it is a fallback for what a bar could not print, so it
+  has to last as long as the cursor is on the bar
 - **2026-08-22**: Label ink is derived from the bar fill by WCAG contrast
   (`ink_on`), because the building palette spans too wide a luminance range for
   any single label color
