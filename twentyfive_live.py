@@ -13,12 +13,14 @@ so no login or API key is needed. It is not an official API and could change
 without notice, which is why the PDF and Excel readers stay first-class.
 
 That guest view also carries requesters' personal details. This reader takes
-only the room, the event name, its state and its times; nothing else is read,
-logged or written out. See ADR-012.
+an allowlist of booking fields (room, event, layout, instructions, headcounts,
+organization, times) and no contact details; free text has email addresses and
+phone numbers scrubbed. See ADR-012 and ADR-013.
 """
 
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -60,6 +62,16 @@ class LiveDay:
     @property
     def stem(self) -> str:
         return f"25live_{self.day:%Y-%m-%d}"
+
+
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
+_PHONE = re.compile(r"(?<!\d)(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)")
+
+
+def _scrub(text) -> str:
+    """Remove email addresses and phone numbers from free text."""
+    text = _EMAIL.sub("[email removed]", str(text or ""))
+    return _PHONE.sub("[phone removed]", text).strip()
 
 
 def _local(timestamp: str) -> datetime:
@@ -210,4 +222,48 @@ class TwentyFiveLiveProcessor(EventScheduleProcessor):
             "setup_time": _format_time(setup),
             "closing_time": _format_time(end),
             "date": start.strftime("%m-%d-%y"),
+            "details": self._details(booking, event_name, setup, start, end),
+        }
+
+    @staticmethod
+    def _details(booking: dict, event_name: str, setup: datetime,
+                 start: datetime, end: datetime) -> Dict[str, str]:
+        """
+        What the timeline's event popup shows, from allowlisted fields only.
+
+        Contact details are never read. Booking comments are left out too:
+        25Live uses them for internal notes.
+        """
+        event = booking.get("event") or {}
+        space = booking.get("spaces") or {}
+
+        def clock(field: str, source: dict) -> Optional[str]:
+            try:
+                return _format_time(_local(source[field]))
+            except (KeyError, TypeError, ValueError):
+                return None
+
+        pre, post = clock("pre_event_dt", event), clock("post_event_dt", event)
+        title = (event.get("event_title") or "").strip()
+        pairs = (
+            ("Title", title if title != event_name else None),
+            ("Reference", event.get("event_locator")),
+            ("Room", space.get("formal_name")),
+            ("Layout", booking.get("layout_name")),
+            ("Room instructions", _scrub(booking.get("space_instructions"))),
+            ("Expected headcount", event.get("expected_count")),
+            ("Registered headcount", event.get("registered_count")),
+            ("Actual headcount", booking.get("act_head_count")),
+            ("Event type", event.get("event_type_name")),
+            ("Organization", event.get("organization_name")),
+            ("Setup starts", _format_time(setup)),
+            ("Pre-event", pre if pre != _format_time(start) else None),
+            ("Event", f"{_format_time(start)} – {_format_time(end)}"),
+            ("Post-event", post if post != _format_time(end) else None),
+            ("Takedown ends", clock("reservation_end_dt", booking)),
+        )
+        return {
+            label: str(value).strip()
+            for label, value in pairs
+            if value not in (None, "", 0) and str(value).strip()
         }

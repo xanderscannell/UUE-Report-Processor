@@ -112,8 +112,9 @@ PDF path's time parsing rather than introducing a second time model (ADR-008).
 - `LiveDay` has `name` and `stem` so the queue and worker treat it as a file;
   the processor overrides `_validate_source()` because there is no file
 - `Setup Ready By` is the reservation start, the PDF's "Setup Starts" time
-- Reads only room, event name, state and times; the guest view's personal
-  details are never touched
+- Reads an allowlist of booking fields (`_details()`, ADR-013) for the
+  timeline's event popup; contact details are never read and free text is
+  scrubbed of emails and phone numbers
 - Network failure raises `ConnectionError` and a changed response shape raises
   `ValueError`; both reach the queue card
 
@@ -167,6 +168,8 @@ PDF path's time parsing rather than introducing a second time model (ADR-008).
 - `gui_components/building_editor.py` — Building Colors `QDialog`
 - `gui_components/worker.py` — `ProcessorWorker` background `QThread`
 - `gui_components/gantt_window.py` — embedded pyqtgraph event timeline
+- `gui_components/event_details.py`: popup opened by clicking a bar, showing the
+  row's `Details` (ADR-013)
 
 **Theming rule**: custom-painted widgets must read colors from `style.tokens()`,
 which returns the scheme `apply_theme()` selected. Asking the OS directly

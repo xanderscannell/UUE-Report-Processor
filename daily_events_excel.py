@@ -45,6 +45,21 @@ REPORT_DATE_LABEL = "report date"
 # Columns the reader cannot work without.
 REQUIRED_COLUMNS = ("Event Start", "Event End", "Event Name", "Location")
 
+# Columns shown in the timeline's event popup, with the label each gets.
+# An allowlist on purpose: the export also carries requestor and scheduler
+# names, emails and phones, which stay out, as does any column added later.
+DETAIL_COLUMNS = (
+    ("Event Title", "Title"),
+    ("Reference #", "Reference"),
+    ("Formal Name", "Room"),
+    ("Layout", "Layout"),
+    ("Exp. Head Count", "Expected headcount"),
+    ("Reg. Head Count", "Registered headcount"),
+    ("Act. Head Count", "Actual headcount"),
+    ("Event Type", "Event type"),
+    ("Organization", "Organization"),
+)
+
 # Date formats seen in the export, tried in order.
 DATE_FORMATS = ("%b %d %Y", "%B %d %Y", "%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d")
 
@@ -428,10 +443,20 @@ class DailyEventsExcelProcessor(EventScheduleProcessor):
             or sheet_date
         )
 
+        details = {
+            label: _text(column(name))
+            for name, label in DETAIL_COLUMNS
+            if _text(column(name)) not in ("", "0")
+        }
+        # A title that only repeats the name adds nothing.
+        if details.get("Title") == event_name:
+            del details["Title"]
+
         return {
             "event_name": event_name,
             "location": location,
             "setup_time": setup_time,
             "closing_time": closing_time,
             "date": day.strftime("%m-%d-%y") if day else "",
+            "details": details,
         }

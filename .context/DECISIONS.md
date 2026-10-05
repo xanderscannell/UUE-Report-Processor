@@ -640,6 +640,8 @@ file.
 - **Read only what the schedule needs.** The guest view also carries
   requesters' personal details and editors' emails. The reader touches the room
   name, event name, booking state and three timestamps, and nothing else.
+  *(Widened by ADR-013: an allowlist of booking fields for the event popup,
+  still with no contact details.)*
 - **Stdlib only.** `urllib` and `json`; the fetch is about 20 lines, copied
   rather than imported from the MCP repo so the exe build has no cross-repo
   dependency.
@@ -678,3 +680,59 @@ file.
 `:create_processor`, `:main`, `gui_components/live_day_dialog.py`,
 `gui_components/worker.py`, `gui_components/file_list.py:FileRow`,
 `gui_wrapper.py:_pull_from_25live`
+
+## ADR-013: Click a timeline bar for the event's details, from per-source allowlists
+
+**Date**: 2026-10-05
+**Status**: Accepted
+
+**Context**:
+A bar shows the event name, room and times. 25Live and the Excel export both
+carry much more per booking (layout, room instructions, headcounts,
+organization, reference number, the full setup-to-takedown sequence), and the
+people using the timeline wanted it without opening 25Live.
+
+**Decision**:
+- **Event records gain an optional `details`**, an ordered `{label: text}`
+  dict. `create_gantt_rows` copies it onto the row as `Details` only when it is
+  non-empty, so PDF rows are byte-for-byte unchanged. The schedule files never
+  see it.
+- **Each reader fills it from an explicit allowlist.** Excel:
+  `DETAIL_COLUMNS` (title, reference, formal room name, layout, three head
+  counts, event type, organization). 25Live: `_details()` (title, reference,
+  formal room name, layout, room instructions, headcounts, event type,
+  organization, setup start, pre-event, event, post-event, takedown end). A
+  column or field added to either source later stays out until named.
+- **No contact details**, by the user's choice: no requestor or scheduler
+  names, emails or phones from either source. Free text (25Live room
+  instructions) has email addresses and phone numbers scrubbed. 25Live booking
+  comments are left out as internal notes.
+- **Details come only from what the day's download already holds**, also by
+  the user's choice. No request per click, so it is instant and works offline
+  once a day is pulled. The event's own record (description, resources,
+  coordinator, request-form answers) would need one request per click; not
+  done.
+- **PDF events get the popup too**, with a note that the report carries no
+  further details. Parsing more out of the PDF was declined: it means new regex
+  on the most fragile reader, and no sample PDF is checked in.
+- **Click, not hover.** `sigMouseClicked` opens `EventDetailsDialog` with
+  `open()` rather than `exec()`, so pyqtgraph's mouse handling is not left
+  blocked under a nested event loop. The hover card adds "Click for details"
+  when there are any.
+- The dialog sizes its height with `totalHeightForWidth`: wrapped labels report
+  a taller size hint than they need, and the layout spread the excess into the
+  gaps.
+
+**Consequences**:
+- (+) Layout, instructions and headcounts are one click from the chart.
+- (+) Allowlists keep both readers' privacy story to one list each.
+- (-) ADR-012's "reads only room, name, state and times" no longer holds; the
+  25Live reader now reads the fields listed above. Still no contact details.
+- (-) Two pre-existing Excel tests compared event records key by key and were
+  updated to include `details`: an intended change to the record shape, not a
+  behaviour regression. No PDF test changed.
+
+**Files**:
+`gui_components/event_details.py`, `gui_components/gantt_window.py:_on_click`,
+`:_bar_at`, `setup_report_processor.py:create_gantt_rows`,
+`daily_events_excel.py:DETAIL_COLUMNS`, `twentyfive_live.py:_details`

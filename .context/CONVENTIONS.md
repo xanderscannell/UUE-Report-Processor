@@ -47,6 +47,7 @@
     live_day_dialog.py        # 25Live day picker
     worker.py                 # Background QThread
     gantt_window.py           # Event timeline
+    event_details.py          # Popup for a clicked timeline bar
   test_setup_report_processor.py  # All tests in one file
 ```
 

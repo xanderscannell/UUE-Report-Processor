@@ -786,6 +786,12 @@ class TestDailyEventsExcel:
             "setup_time": "9:00 AM",
             "closing_time": "3:30 PM",
             "date": "08-22-26",
+            "details": {
+                "Reference": "2026-AAPFPT",
+                "Room": "Formal UC 1225",
+                "Layout": "Banquet Rounds",
+                "Event type": "Staff Retreat",
+            },
         }
 
     def test_unlisted_locations_are_dropped(self, tmp_path, export_config):
@@ -927,6 +933,12 @@ class TestDailyEventsExcel:
             "StartTime": "09:00",
             "EndTime": "15:30",
             "Date": "08-22-26",
+            "Details": {
+                "Reference": "2026-AAPFPT",
+                "Room": "Formal UC 1225",
+                "Layout": "Banquet Rounds",
+                "Event type": "Staff Retreat",
+            },
         }]
 
 
@@ -1157,6 +1169,7 @@ class TestTwentyFiveLive:
             "setup_time": "8:45 AM",
             "closing_time": "5:00 PM",
             "date": "10-06-26",
+            "details": {"Setup starts": "8:45 AM", "Event": "9:00 AM – 5:00 PM"},
         }]
 
     def test_whitelist_and_cancellations_filter_bookings(self, live, monkeypatch):
@@ -1217,3 +1230,67 @@ class TestTwentyFiveLive:
         processor = create_processor(LiveDay(date(2026, 10, 6)), config_path=export_config)
         assert isinstance(processor, TwentyFiveLiveProcessor)
         assert processor.get_output_basename() == "10-06-26"
+
+
+class TestEventDetails:
+    """Test what each source hands the timeline's event popup."""
+
+    def test_excel_details_never_carry_contact_columns(self, tmp_path, export_config):
+        """Requestor and scheduler columns stay out; allowlisted ones come through."""
+        headers = EXPORT_HEADERS + [
+            "Organization", "Exp. Head Count", "Requestor", "Requestor Email",
+            "Requestor Phone", "Scheduler", "Scheduler Email", "Last Mod. User",
+        ]
+        row = booking("UC 1225") + [
+            "Human Resources", "40", "Doe, Jane", "jdoe@umich.edu",
+            "3135550100", "Roe, Rich", "rroe@umich.edu", "jdoe",
+        ]
+        path = write_export(tmp_path / "export.xlsx", [row], headers=headers)
+        processor = DailyEventsExcelProcessor(str(path), config_path=export_config)
+        details = processor._collect_events()[0]["details"]
+
+        assert details["Organization"] == "Human Resources"
+        assert details["Expected headcount"] == "40"
+        shown = " ".join(details) + " " + " ".join(details.values())
+        for private in ("Doe", "jdoe", "3135550100", "Roe", "Requestor", "Scheduler"):
+            assert private not in shown
+
+    def test_25live_details_are_allowlisted_and_scrubbed(self, live, monkeypatch):
+        """Layout, headcount and times come through; contacts and comments do not."""
+        booking = live_booking("UC 1225", setup="08:45", start="09:00", end="17:00")
+        booking.update({
+            "layout_name": "Boardroom",
+            "space_instructions": "Call Jane at 313-555-0100 or jane@umich.edu",
+            "reservation_comments": "internal note",
+            "reservation_end_dt": "2026-10-06T17:15:00-04:00",
+            "last_mod_user": "editor@umich.edu",
+        })
+        booking["event"].update({
+            "event_locator": "2026-AAPLBW",
+            "expected_count": 2,
+            "registered_count": "",
+            "organization_name": "Human Resources",
+            "pre_event_dt": "2026-10-06T09:00:00-04:00",
+        })
+        serve(monkeypatch, {"space_reservations": {"space_reservation": [booking]}})
+        live.process()
+
+        assert live._events[0]["details"] == {
+            "Reference": "2026-AAPLBW",
+            "Layout": "Boardroom",
+            "Room instructions": "Call Jane at [phone removed] or [email removed]",
+            "Expected headcount": "2",
+            "Organization": "Human Resources",
+            "Setup starts": "8:45 AM",
+            "Event": "9:00 AM – 5:00 PM",
+            "Takedown ends": "5:15 PM",
+        }
+
+    def test_details_reach_the_gantt_row(self, live, monkeypatch):
+        """The popup reads Details off the timeline row."""
+        serve(monkeypatch, {"space_reservations": {"space_reservation": [
+            live_booking("UC 1225"),
+        ]}})
+        live.process()
+        rows = live.create_gantt_rows(live._events)
+        assert rows[0]["Details"]["Setup starts"] == "8:45 AM"

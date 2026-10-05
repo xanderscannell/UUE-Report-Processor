@@ -83,6 +83,10 @@ Click **View Timeline** on the results screen to open the day's schedule as a Ga
 - Rows never shrink below a readable height — a busy day scrolls instead
 - Hover a bar to hold a card with the full event name, room, and exact times; it
   follows the cursor and stays until you leave the bar
+- **Click a bar** for everything else the report carried: reference number,
+  layout, room instructions, headcounts, organization, and (from 25Live) the full
+  setup, event and takedown times. Contact details are never shown. PDF events
+  have no further details to show
 - **Several days at once** — the date is on the left axis, so a weekend stacks
   into one chart. Drop one file per day (the database exports one day at a
   time); a **Day** filter appears for narrowing to a single day
@@ -215,7 +219,8 @@ optional arguments:
 > **A note on 25Live.** It reads the same public view anyone sees at
 > 25live.collegenet.com/pro/umdearborn without signing in. That is not an
 > official API and could change without notice, which is why the PDF and Excel
-> readers are kept. Only the room, event name, and times are read.
+> readers are kept. Only the booking fields the schedule and the event popup
+> show are read; contact details never are.
 
 ## Output Format
 
@@ -303,10 +308,11 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 │   ├── worker.py                 #   Background processing thread
 │   ├── location_editor.py        #   Location whitelist editor
 │   ├── live_day_dialog.py        #   25Live day picker
+│   ├── event_details.py          #   Popup for a clicked timeline bar
 │   └── gantt_window.py           #   Embedded Gantt chart
 ├── location_config.json          # Location whitelist configuration
 ├── UUE.ico                       # Application icon
-├── test_setup_report_processor.py # Test suite (106 tests)
+├── test_setup_report_processor.py # Test suite (109 tests)
 ├── requirements.txt              # Dependencies
 ├── build_release.bat             # Builds + zips the portable release
 ├── CHANGELOG.md                  # Release history

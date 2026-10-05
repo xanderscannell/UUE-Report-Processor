@@ -16,7 +16,8 @@ sheets lands as two blocks just the same.
 Each bar carries its own label — event name, room, and time range, laid out
 against the bar's pixel width so it re-fits on every resize and steps outside
 the bar when the event is too short to hold text. Hovering still shows the full
-card for whatever the pixels could not fit.
+card for whatever the pixels could not fit, and clicking a bar opens everything
+else the source carried for that event (``event_details.py``).
 
 The Y axis names the day rather than the room, because the room is now printed
 on the bar itself. That leaves the axis free to stack more than one day, which
@@ -49,6 +50,7 @@ from PySide6.QtWidgets import (
 )
 
 from .building_config import BuildingColors, prefix_of
+from .event_details import EventDetailsDialog
 from .gantt_labels import BarLabels, min_row_height
 from .settings import GANTT
 from .style import SPACE, active_dark, tokens
@@ -215,6 +217,7 @@ class GanttWindow(QMainWindow):
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
         self.plot.scene().sigMouseMoved.connect(self._on_hover)
+        self.plot.scene().sigMouseClicked.connect(self._on_click)
         self.plot.getViewBox().sigResized.connect(self._update_y_window)
 
         # A day with more events than fit at a readable row height scrolls,
@@ -582,40 +585,63 @@ class GanttWindow(QMainWindow):
         move that lands elsewhere, handled here, or a move out of the widget
         entirely, handled by the Leave case in ``eventFilter``.
         """
-        vb = self.plot.getViewBox()
-        if not self.plot.sceneBoundingRect().contains(scene_pos):
+        bar = self._bar_at(scene_pos)
+        if bar is None:
             QToolTip.hideText()
             return
-        point = vb.mapSceneToView(scene_pos)
-        x, y = point.x(), point.y()
 
+        row = bar["row"]
+        name = row.get("EventName")
+        lines = [f"<b>{name}</b>"] if name else []
+        lines.append(row.get("Location", ""))
+        lines.append(bar["times"])
+        if row.get("Details"):
+            lines.append("<i>Click for details</i>")
+        # Anchored to the event's own position rather than to QCursor.pos(),
+        # so the card cannot drift from the bar it describes if the events ever
+        # lag the pointer.
+        local = self.plot.mapFromScene(scene_pos)
+
+        # Qt treats a repeat showText with unchanged text as a no-op, so the
+        # card would otherwise sit wherever it first appeared. A one-pixel rect
+        # at the cursor makes Qt's own tipChanged() true on the very next move,
+        # which is what repositions it — and Qt's placement keeps it clear of
+        # the screen edges for free. Leaving is still our job, not this rect's:
+        # the misses above and the Leave case in eventFilter do the hiding.
+        QToolTip.showText(
+            self.plot.viewport().mapToGlobal(local),
+            "<br>".join(lines), self.plot,
+            QRect(local, QSize(1, 1)),
+            TOOLTIP_HOLD_MS,
+        )
+
+    def _bar_at(self, scene_pos) -> Optional[dict]:
+        """The bar under a scene position, or None."""
+        if not self.plot.sceneBoundingRect().contains(scene_pos):
+            return None
+        point = self.plot.getViewBox().mapSceneToView(scene_pos)
+        x, y = point.x(), point.y()
         for bar in self._bars:
             if bar["x0"] <= x <= bar["x1"] and bar["y0"] <= y <= bar["y1"]:
-                row = bar["row"]
-                name = row.get("EventName")
-                lines = [f"<b>{name}</b>"] if name else []
-                lines.append(row.get("Location", ""))
-                lines.append(bar["times"])
-                # Anchored to the event's own position rather than to
-                # QCursor.pos(), so the card cannot drift from the bar it
-                # describes if the events ever lag the pointer.
-                local = self.plot.mapFromScene(scene_pos)
+                return bar
+        return None
 
-                # Qt treats a repeat showText with unchanged text as a no-op, so
-                # the card would otherwise sit wherever it first appeared. A
-                # one-pixel rect at the cursor makes Qt's own tipChanged() true
-                # on the very next move, which is what repositions it — and Qt's
-                # placement keeps it clear of the screen edges for free. Leaving
-                # is still our job, not this rect's: the misses below and the
-                # Leave case in eventFilter do the hiding.
-                QToolTip.showText(
-                    self.plot.viewport().mapToGlobal(local),
-                    "<br>".join(lines), self.plot,
-                    QRect(local, QSize(1, 1)),
-                    TOOLTIP_HOLD_MS,
-                )
-                return
+    def _on_click(self, event):
+        """Open the details popup for the clicked bar."""
+        if event.button() != Qt.LeftButton:
+            return
+        bar = self._bar_at(event.scenePos())
+        if bar is None:
+            return
         QToolTip.hideText()
+        row = bar["row"]
+        dialog = EventDetailsDialog(
+            row, bar["times"], self._format_date(row.get("Date", "")), self
+        )
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        # open(), not exec(): this runs inside pyqtgraph's mouse handling,
+        # which should not be left blocked under a nested event loop.
+        dialog.open()
 
     # -- theming ---------------------------------------------------------
     def _apply_theme(self):

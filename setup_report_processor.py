@@ -174,7 +174,9 @@ class EventScheduleProcessor:
 
         Each record is a dict with ``event_name``, ``location``, ``setup_time``
         and ``closing_time``. Locations are already filtered against the
-        whitelist by the time they are returned.
+        whitelist by the time they are returned. A source with more to say
+        adds ``details``, an ordered ``{label: text}`` dict that the timeline's
+        event popup shows; it never reaches the schedule files.
 
         Returns:
             List of event dictionaries
@@ -410,7 +412,7 @@ class EventScheduleProcessor:
                 logger.warning(f"Skipping event '{event['event_name']}' - time conversion failed")
                 continue
 
-            rows.append({
+            row = {
                 "EventName": event.get("event_name", ""),
                 "Location": event["location"],
                 "StartTime": start_time_24h,
@@ -419,7 +421,12 @@ class EventScheduleProcessor:
                 # that date each event (the Excel export) set it per row; the
                 # PDF has one date for the whole report.
                 "Date": event.get("date") or self.report_date or ""
-            })
+            }
+            # What the event popup shows beyond name, room and times. The PDF
+            # reader sets none, so its rows are unchanged.
+            if event.get("details"):
+                row["Details"] = event["details"]
+            rows.append(row)
 
         logger.info(f"Created {len(rows)} Gantt event rows from {len(events)} events")
         return rows

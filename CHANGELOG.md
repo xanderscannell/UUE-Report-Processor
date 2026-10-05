@@ -16,8 +16,15 @@ features are added compatibly.
 - CLI: `python setup_report_processor.py --25live 2026-10-06`
 - If 25Live cannot be reached, the day's card says so ("Could not reach 25Live") instead of a bare "failed"
 - **Note**: this is not an official 25Live API and could change without notice, so the PDF and Excel readers stay
-- Only the room, event name and times are read from 25Live. Its public view also shows requesters' contact details; those are never read
-- Test suite grew from 98 to 106 tests
+- Its public view also shows requesters' contact details; those are never read
+
+### Click an event for its details
+
+- **Click any bar on the timeline** to open everything else the report carried for that event: reference number, formal room name, layout, room instructions, headcounts, event type and organization. A 25Live event also shows its setup start, event times and takedown end
+- Works for Excel exports and 25Live days. A PDF event opens the same window with its name, room and times
+- No contact details are shown from either source, and email addresses or phone numbers inside room instructions are blanked out
+- The hover card now says "Click for details" when there is more to see
+- Test suite grew from 98 to 109 tests
 
 ## [4.2.0] - 2026-08-22: Database exports, and a timeline that reads at a glance
 

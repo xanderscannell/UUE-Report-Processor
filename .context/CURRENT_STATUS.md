@@ -8,11 +8,31 @@
 **Subphase**: Built, tested and checked against live data; next is a real-use
 soak and the exe rebuild
 **Progress**: A day can be pulled straight from 25Live's public guest view and
-queued like a file, from the GUI or with `--25live YYYY-MM-DD`. 106/106 tests
+queued like a file, from the GUI or with `--25live YYYY-MM-DD`. 109/109 tests
 pass, all 98 pre-existing ones unedited. v4.2.0 is tagged; this work sits under
 `[Unreleased]` in the changelog.
 
-## Recently Completed (2026-10-05: pull straight from 25Live)
+## Recently Completed (2026-10-05: click a bar for the event's details)
+
+- **Clicking a timeline bar opens `EventDetailsDialog`** (`event_details.py`)
+  with the row's `Details`: reference, formal room, layout, room instructions,
+  headcounts, type, organization, and for 25Live the setup / pre / event /
+  post / takedown times (ADR-013).
+- **User's choices**: details come only from the day's download (no request per
+  click); no contact details from either source; 25Live and Excel covered, PDF
+  gets the popup with a "no further details" note.
+- Allowlists: `DETAIL_COLUMNS` in `daily_events_excel.py`,
+  `TwentyFiveLiveProcessor._details()`. Room instructions are scrubbed of emails
+  and phones, as in the MCP.
+- **Verified** by synthetic clicks on the real timeline (`QTest.mouseClick` on
+  the viewport at a bar's centre): TIAA Counseling from 25Live (Oct 6) showed 11
+  fields, FSL Retreat from the Excel sample showed 7 with no requestor or
+  scheduler, a PDF-style row showed the note, an empty-space click opened
+  nothing. Long instructions wrap and the dialog fits them.
+- Two pre-existing Excel tests compared records key by key and now include
+  `details`; no PDF test changed. 109/109 pass.
+
+## Earlier Completed (2026-10-05: pull straight from 25Live)
 
 - **New source, `twentyfive_live.py`.** `TwentyFiveLiveProcessor` reads
   `rm_reservations.json` for one day (stdlib `urllib`/`json`, no login). The
@@ -23,7 +43,8 @@ pass, all 98 pre-existing ones unedited. v4.2.0 is tagged; this work sits under
   `LiveDay` before checking extensions. Base class gained `_validate_source()`.
 - **Setup Ready By is the reservation start** (the PDF's "Setup Starts"), so
   this source keeps setup lead time, unlike the Excel export.
-- **Privacy**: only room, event name, state and times are read. The guest view
+- **Privacy**: (since widened by ADR-013 to an allowlist for the event popup)
+  only room, event name, state and times are read. The guest view
   also carries requesters' contact details; they are never touched.
 - **GUI**: "Pull from 25Live" button on the empty page and beside the compact
   drop zone opens `LiveDayDialog` (From/To range). Card folder line reads
@@ -411,7 +432,7 @@ gui_components/              [status: worker dispatches via create_processor; dr
 gui_components/gantt_labels.py [status: new — in-bar label painter, device-pixel layout]
 gui_components/gantt_window.py [status: bars labeled; row floor + vertical scroll]
 location_config.json         [status: stable, v2 format]
-test_setup_report_processor.py [status: 106/106 passing]
+test_setup_report_processor.py [status: 109/109 passing]
 requirements.txt             [status: updated, +PySide6 +pyqtgraph]
 UUE.ico                      [status: app icon — must ship beside exe for window icon]
 build_release.bat            [status: new — builds + zips the portable release]
@@ -419,6 +440,8 @@ build_release.bat            [status: new — builds + zips the portable release
 
 ## Recent Decisions
 
+- **2026-10-05**: Clicking a timeline bar shows allowlisted per-source details,
+  from the day's download only, with no contact details (ADR-013)
 - **2026-10-05**: A day pulled from 25Live is a third source and a queue item
   like any file; it reads only room, name, state and times (ADR-012)
 - **2026-08-22**: Multiple days stack on one timeline, keyed by the date the

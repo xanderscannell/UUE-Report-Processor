@@ -115,6 +115,9 @@ Open it with **View Timeline** on the results screen, or turn on
   only the day it belongs to
 - Hover a bar to hold a card with the full details; it follows the cursor and
   stays until you leave the bar
+- Click a bar for the rest of what the report carried (reference, layout, room
+  instructions, headcounts, organization, and from 25Live the setup and takedown
+  times). Contact details are never shown
 - The view is fixed (no accidental panning or zooming), but scrolls vertically
   once a day has more events than fit at a readable row height
 - **Several days at once** — the left axis names the date, so days stack into
