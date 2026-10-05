@@ -53,9 +53,9 @@ Before the session ends:
 
 ## Current Focus
 
-**Phase**: Multi-day timeline (ADR-011)
-**Working on**: Checking the stacked weekend and the in-bar labels on a real
-display, then rebuilding the portable exe
+**Phase**: 25Live as a third event source (ADR-012)
+**Working on**: Soaking the 25Live pull against real days and their PDFs, then
+rebuilding the portable exe (check HTTPS works frozen)
 **Key constraint**: Must not break existing regex-based parsing for working PDF formats —
 the PDF reader stays a first-class source, not a deprecated one.
 Accepted file types come from `SUPPORTED_SUFFIXES` in `setup_report_processor.py`;

@@ -29,6 +29,7 @@
 ./
   setup_report_processor.py   # Shared pipeline, PDF reader, create_processor()
   daily_events_excel.py       # Daily Events Excel export reader
+  twentyfive_live.py          # 25Live reader (LiveDay, TwentyFiveLiveProcessor)
   gui_wrapper.py              # GUI entry point (MainWindow, stage machine)
   gui_components/
     __init__.py               # Public exports
@@ -43,6 +44,7 @@
     preferences.py            # Persisted user preferences (gui_preferences.json)
     log_handler.py            # Logging widget
     location_editor.py        # Whitelist editor dialog
+    live_day_dialog.py        # 25Live day picker
     worker.py                 # Background QThread
     gantt_window.py           # Event timeline
   test_setup_report_processor.py  # All tests in one file

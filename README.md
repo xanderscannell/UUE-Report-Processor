@@ -1,10 +1,11 @@
 # Daily Setup Report Processor
 
-A Python application that extracts event schedules from **Daily Setup Report PDFs** or the events database's **Daily Events Excel export** and generates chronologically sorted Excel/CSV outputs, with both CLI and GUI interfaces.
+A Python application that extracts event schedules from **Daily Setup Report PDFs**, the events database's **Daily Events Excel export**, or **straight from 25Live**, and generates chronologically sorted Excel/CSV outputs, with both CLI and GUI interfaces.
 
 ## Features
 
 - **Two Event Sources**: Reads Daily Setup Report PDFs *or* Daily Events Excel exports — the type is detected from the file extension, and a single batch can mix both
+- **Pull from 25Live**: Skip the export and queue days straight from 25Live's public view (no sign-in), with real setup times
 - **Excel & CSV Output**: Generates professional schedule files
 - **Interactive Gantt Chart**: Built-in timeline view of the day's events with a live current-time marker
 - **Smart Location Filtering**: Configurable whitelist of venue locations
@@ -44,7 +45,9 @@ The window walks you through one step at a time — it starts as a drop target,
 becomes a work queue once files are added, and ends on a summary of what was
 produced.
 
-1. **Add files**: Drop PDFs or Excel exports anywhere in the window, or click the drop zone to browse
+1. **Add files**: Drop PDFs or Excel exports anywhere in the window, or click the drop zone to browse.
+   Or click **Pull from 25Live** and pick a day (or a From/To range, such as a weekend) to queue it
+   straight from 25Live
 2. **Choose output**: Toggle **Excel .xlsx** and/or **CSV .csv** — or leave both off
    for a timeline-only run (see below)
 3. **Process**: Click **Process N files** — each file shows live status as it runs
@@ -147,6 +150,9 @@ python setup_report_processor.py report.pdf
 # Process a Daily Events Excel export — same options, same output
 python setup_report_processor.py DailyEventsExcel.xlsx
 
+# Pull a day straight from 25Live instead of reading a file
+python setup_report_processor.py --25live 2026-10-06
+
 # Specify custom output name
 python setup_report_processor.py report.pdf -o my_schedule.xlsx
 
@@ -163,11 +169,15 @@ python setup_report_processor.py report.pdf --verbose
 ### Command-Line Options
 
 ```
-usage: setup_report_processor.py [-h] [-o OUTPUT] [--excel] [--csv]
-                                  [--no-excel] [-v] report_file
+usage: setup_report_processor.py [-h] [--25live YYYY-MM-DD] [-o OUTPUT]
+                                 [--excel] [--csv] [--no-excel] [-v]
+                                 [--config CONFIG]
+                                 [report_file]
 
 positional arguments:
   report_file           Path to the report to process (.pdf or .xlsx)
+
+Give either report_file or --25live, not both.
 
 optional arguments:
   -h, --help            Show this help message and exit
@@ -177,6 +187,7 @@ optional arguments:
   --csv                 Generate CSV output (default: False)
   --no-excel            Disable Excel output
   -v, --verbose         Enable verbose logging (DEBUG level)
+  --25live YYYY-MM-DD   Pull this day from 25Live instead of reading a file
 ```
 
 ## How It Works
@@ -188,6 +199,8 @@ optional arguments:
      pulls out the event name, location, setup time, and closing time
    - *Excel*: reads one row per booking from each `Event List` sheet, taking the
      event name, `Location`, `Event Start`, and `Event End`
+   - *25Live*: downloads the day's room bookings from 25Live's public view,
+     taking the event name, room, setup start, and event end
 3. **Filter by Location**: Keeps only events at locations enabled in the whitelist
 4. **Create Schedule**: Generates two rows per event (Setup Ready By + Closing)
 5. **Sort Chronologically**: Orders all entries by time
@@ -196,7 +209,13 @@ optional arguments:
 > **A note on setup times.** The Excel export has no setup-start column, so for
 > that source **Setup Ready By is the event's own start time**. A schedule built
 > from an export therefore carries no setup lead time, and its Setup Ready By
-> will be later than the same event's row from a PDF.
+> will be later than the same event's row from a PDF. 25Live does carry the
+> setup start, so a 25Live pull matches the PDF here.
+>
+> **A note on 25Live.** It reads the same public view anyone sees at
+> 25live.collegenet.com/pro/umdearborn without signing in. That is not an
+> official API and could change without notice, which is why the PDF and Excel
+> readers are kept. Only the room, event name, and times are read.
 
 ## Output Format
 
@@ -271,6 +290,7 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 .
 ├── setup_report_processor.py     # Shared pipeline + PDF reader (CLI + library)
 ├── daily_events_excel.py         # Daily Events Excel export reader
+├── twentyfive_live.py            # 25Live reader
 ├── gui_wrapper.py                # GUI application (PySide6)
 ├── gui_components/               # GUI component modules
 │   ├── settings.py               #   GUI defaults and Gantt config
@@ -282,10 +302,11 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 │   ├── log_handler.py            #   Log routing + display panel
 │   ├── worker.py                 #   Background processing thread
 │   ├── location_editor.py        #   Location whitelist editor
+│   ├── live_day_dialog.py        #   25Live day picker
 │   └── gantt_window.py           #   Embedded Gantt chart
 ├── location_config.json          # Location whitelist configuration
 ├── UUE.ico                       # Application icon
-├── test_setup_report_processor.py # Test suite (87 tests)
+├── test_setup_report_processor.py # Test suite (106 tests)
 ├── requirements.txt              # Dependencies
 ├── build_release.bat             # Builds + zips the portable release
 ├── CHANGELOG.md                  # Release history

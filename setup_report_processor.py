@@ -5,15 +5,17 @@ Daily Setup Report Processor
 Turns an event report into a chronologically ordered schedule in Excel/CSV
 format.
 
-Two report formats are supported, chosen automatically by file extension via
-``create_processor()``:
+Three sources are supported, chosen automatically via ``create_processor()``
+(files by extension):
 
 * **Daily Setup Report PDF** — parsed with pdfplumber and regex
   (``SetupReportProcessor``)
 * **Daily Events Excel export** — read straight from the database's own
   spreadsheet (``daily_events_excel.DailyEventsExcelProcessor``)
+* **A day pulled live from 25Live**, with no file at all
+  (``twentyfive_live.TwentyFiveLiveProcessor``)
 
-Both produce the same event records, so everything downstream — location
+All three produce the same event records, so everything downstream — location
 filtering, schedule rows, sorting, output, and the Gantt feed — is shared by
 ``EventScheduleProcessor``.
 
@@ -27,7 +29,7 @@ import json
 import logging
 import argparse
 from pathlib import Path
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Dict, Optional
 import pandas as pd
 import pdfplumber
@@ -95,6 +97,8 @@ class EventScheduleProcessor:
         ``SOURCE_LABEL`` — format name used in error messages
         ``_collect_events()`` — return the list of event dicts
         ``extract_report_date()`` — return "MM-DD-YY" or None
+
+    A source that is not a file also overrides ``_validate_source()``.
     """
 
     #: Accepted file extensions (lowercase, including the leading dot).
@@ -116,12 +120,7 @@ class EventScheduleProcessor:
             ValueError: If the file is not a format this processor reads
         """
         self.source_path = Path(source_path)
-        if not self.source_path.exists():
-            raise FileNotFoundError(
-                f"{self.SOURCE_LABEL} file not found: {source_path}"
-            )
-
-        self._validate_suffix()
+        self._validate_source()
 
         # Load location configuration
         self._load_location_config(config_path)
@@ -140,6 +139,22 @@ class EventScheduleProcessor:
             )
 
         logger.info(f"Initialized processor for: {self.source_path}")
+
+    def _validate_source(self) -> None:
+        """
+        Check the report file exists and is a format this processor reads.
+
+        A source that is not a file (25Live) overrides this.
+
+        Raises:
+            FileNotFoundError: If the report file does not exist
+            ValueError: If the file is not a format this processor reads
+        """
+        if not self.source_path.exists():
+            raise FileNotFoundError(
+                f"{self.SOURCE_LABEL} file not found: {self.source_path}"
+            )
+        self._validate_suffix()
 
     def _validate_suffix(self) -> None:
         """
@@ -809,13 +824,14 @@ SUPPORTED_SUFFIXES = (".pdf", ".xlsx")
 
 
 def create_processor(
-    path: str, config_path: Optional[str] = None
+    path, config_path: Optional[str] = None
 ) -> EventScheduleProcessor:
     """
-    Build the processor that matches a report file, chosen by its extension.
+    Build the processor that matches a report, chosen by its extension.
 
     Args:
-        path: Path to the report file (.pdf or .xlsx)
+        path: Path to the report file (.pdf or .xlsx), or a
+            ``twentyfive_live.LiveDay`` to pull from 25Live
         config_path: Optional path to location config JSON file
 
     Returns:
@@ -831,6 +847,13 @@ def create_processor(
         >>> create_processor("DailyEventsExcel.xlsx").__class__.__name__
         'DailyEventsExcelProcessor'
     """
+    # Imported here, not at module scope: like daily_events_excel below, it
+    # imports EventScheduleProcessor from this module.
+    from twentyfive_live import LiveDay, TwentyFiveLiveProcessor
+
+    if isinstance(path, LiveDay):
+        return TwentyFiveLiveProcessor(path.day, config_path=config_path)
+
     suffix = Path(path).suffix.lower()
 
     if suffix == ".pdf":
@@ -855,8 +878,8 @@ def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
         description=(
-            "Extract event schedules from Daily Setup Report PDFs or "
-            "Daily Events Excel exports"
+            "Extract event schedules from Daily Setup Report PDFs, "
+            "Daily Events Excel exports, or a day pulled from 25Live"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -866,12 +889,22 @@ Examples:
   %(prog)s report.pdf -o schedule.xlsx
   %(prog)s DailyEventsExcel.xlsx --csv --excel
   %(prog)s report.pdf --output custom_name.xlsx --verbose
+  %(prog)s --25live 2026-10-06 --csv
         """
     )
 
     parser.add_argument(
         "report_file",
+        nargs="?",
         help="Path to the report to process (.pdf or .xlsx)"
+    )
+
+    parser.add_argument(
+        "--25live",
+        dest="live_date",
+        metavar="YYYY-MM-DD",
+        type=date.fromisoformat,
+        help="Pull this day from 25Live instead of reading a file"
     )
 
     parser.add_argument(
@@ -912,14 +945,21 @@ Examples:
     )
 
     args = parser.parse_args()
+    if (args.report_file is None) == (args.live_date is None):
+        parser.error("give exactly one of: a report file, or --25live DATE")
 
     # Set logging level
     if args.verbose:
         logger.setLevel(logging.DEBUG)
 
     try:
-        # Build the processor that matches the file type
-        processor = create_processor(args.report_file, config_path=args.config)
+        # Build the processor that matches the source
+        if args.live_date:
+            from twentyfive_live import LiveDay
+            source = LiveDay(args.live_date)
+        else:
+            source = args.report_file
+        processor = create_processor(source, config_path=args.config)
 
         # Process the report
         df = processor.process()

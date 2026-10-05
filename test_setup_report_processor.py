@@ -8,12 +8,14 @@ Comprehensive test suite for the Daily Setup Report Processor.
 import json
 import pytest
 import pandas as pd
-from datetime import datetime, time
+from datetime import date, datetime, time
 from pathlib import Path
 from openpyxl import Workbook
 
 from setup_report_processor import SetupReportProcessor, create_processor
 from daily_events_excel import DailyEventsExcelProcessor, _format_time
+import twentyfive_live
+from twentyfive_live import LiveDay, TwentyFiveLiveProcessor
 
 # Imported directly rather than via the package, so the suite stays runnable
 # without PySide6 installed.
@@ -1092,3 +1094,126 @@ class TestDayGrouping:
         assert sorted(keys, key=day_sort_key) == [
             "08-22-26", "AnotherFile", "SetupReport_June"
         ]
+
+
+def live_booking(room, name="FSL Retreat", setup="08:45", start="09:00",
+                 end="17:00", day="2026-10-06", state=1):
+    """One booking shaped like 25Live's rm_reservations.json."""
+    return {
+        "reservation_state": state,
+        "reservation_start_dt": f"{day}T{setup}:00-04:00",
+        "spaces": {"space_name": room},
+        "event": {
+            "event_name": name,
+            "event_title": "",
+            "state_name": "Confirmed",
+            "event_start_dt": f"{day}T{start}:00-04:00",
+            "event_end_dt": f"{day}T{end}:00-04:00",
+        },
+    }
+
+
+class FakeResponse:
+    """Stands in for urlopen's response, carrying a JSON body."""
+
+    def __init__(self, body):
+        self.body = json.dumps(body).encode()
+
+    def read(self, *args):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.fixture
+def live(export_config):
+    """A 25Live processor for Oct 6 2026, using the two-room test config."""
+    return TwentyFiveLiveProcessor(date(2026, 10, 6), config_path=export_config)
+
+
+def serve(monkeypatch, body):
+    """Make the next 25Live request answer with ``body``."""
+    monkeypatch.setattr(
+        twentyfive_live.urllib.request, "urlopen", lambda *a, **k: FakeResponse(body)
+    )
+
+
+class TestTwentyFiveLive:
+    """Test the reader that pulls a day straight from 25Live."""
+
+    def test_booking_becomes_an_event_record(self, live, monkeypatch):
+        """Setup Ready By is the reservation start; Closing is the event end."""
+        serve(monkeypatch, {"space_reservations": {"space_reservation": [
+            live_booking("UC 1225", setup="08:45", end="17:00"),
+        ]}})
+        live.process()
+        assert live._events == [{
+            "event_name": "FSL Retreat",
+            "location": "UC 1225",
+            "setup_time": "8:45 AM",
+            "closing_time": "5:00 PM",
+            "date": "10-06-26",
+        }]
+
+    def test_whitelist_and_cancellations_filter_bookings(self, live, monkeypatch):
+        """Rooms off the whitelist and cancelled bookings are excluded."""
+        serve(monkeypatch, {"space_reservations": {"space_reservation": [
+            live_booking("UC 1225", name="kept"),
+            live_booking("FH Gym", name="not whitelisted"),
+            live_booking("UC 1225", name="cancelled", state=twentyfive_live.CANCELLED),
+        ]}})
+        live.process()
+        assert [e["event_name"] for e in live._events] == ["kept"]
+
+    def test_events_come_out_in_setup_order(self, live, monkeypatch):
+        """25Live sorts by room; the timeline needs time order (ADR-011)."""
+        serve(monkeypatch, {"space_reservations": {"space_reservation": [
+            live_booking("UC 1225", name="afternoon", setup="15:45", start="16:00"),
+            live_booking("UC Kochoff Hall C", name="morning", setup="10:45", start="11:00"),
+        ]}})
+        live.process()
+        assert [e["event_name"] for e in live._events] == ["morning", "afternoon"]
+
+    def test_doubled_spaces_in_room_names_still_match(self, live, monkeypatch):
+        """25Live writes some rooms with two spaces ("UC Kochoff  Hall C")."""
+        serve(monkeypatch, {"space_reservations": {"space_reservation": [
+            live_booking("UC Kochoff  Hall C"),
+        ]}})
+        live.process()
+        assert live._events[0]["location"] == "UC Kochoff Hall C"
+
+    def test_booking_starting_on_another_day_is_excluded(self, live, monkeypatch):
+        """A booking crossing midnight belongs to the day it starts."""
+        serve(monkeypatch, {"space_reservations": {"space_reservation": [
+            live_booking("UC 1225", day="2026-10-05", setup="23:00",
+                         start="23:00", end="23:30"),
+        ]}})
+        live.process()
+        assert live._events == []
+
+    def test_single_booking_and_empty_day_shapes(self, live, monkeypatch):
+        """One booking arrives as a bare object; an empty day omits the key."""
+        serve(monkeypatch, {"space_reservations": {
+            "space_reservation": live_booking("UC 1225")
+        }})
+        assert len(live._fetch_bookings()) == 1
+        serve(monkeypatch, {"space_reservations": {"engine": "accl"}})
+        assert live._fetch_bookings() == []
+
+    def test_unreachable_25live_raises_connection_error(self, live, monkeypatch):
+        """A network failure surfaces as ConnectionError, which the worker shows."""
+        def offline(*args, **kwargs):
+            raise twentyfive_live.urllib.error.URLError("getaddrinfo failed")
+        monkeypatch.setattr(twentyfive_live.urllib.request, "urlopen", offline)
+        with pytest.raises(ConnectionError, match="Could not reach 25Live"):
+            live.process()
+
+    def test_factory_routes_a_live_day(self, export_config):
+        """create_processor takes a LiveDay and names outputs by its date."""
+        processor = create_processor(LiveDay(date(2026, 10, 6)), config_path=export_config)
+        assert isinstance(processor, TwentyFiveLiveProcessor)
+        assert processor.get_output_basename() == "10-06-26"

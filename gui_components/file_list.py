@@ -57,7 +57,11 @@ class FileRow(QFrame):
         text_col.setContentsMargins(0, 0, 0, 0)
         self.name_label = QLabel(path.name)
         self.name_label.setStyleSheet("font-weight: 600;")
-        self.folder_label = label(self._short_folder(path), "faint")
+        # A 25Live day has no folder; say where it comes from instead.
+        self.folder_label = label(
+            self._short_folder(path) if isinstance(path, Path)
+            else "25live.collegenet.com", "faint"
+        )
         text_col.addWidget(self.name_label)
         text_col.addWidget(self.folder_label)
         row.addLayout(text_col, stretch=1)

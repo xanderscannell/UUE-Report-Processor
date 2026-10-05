@@ -6,6 +6,19 @@ Versions follow [semantic versioning](https://semver.org/): the major number
 moves when the interface or the deliverable changes shape, the minor when
 features are added compatibly.
 
+## [Unreleased]
+
+### Pull straight from 25Live
+
+- **New third event source.** Click **Pull from 25Live**, pick a day (or a From/To range for a weekend), and it is queued alongside any report files. No export and no sign-in: it reads the public view anyone sees at 25live.collegenet.com/pro/umdearborn
+- **Setup times are back.** 25Live records when setup starts, so Setup Ready By matches what the PDF showed, unlike an Excel export
+- The same whitelist, sorting, output and stacked timeline apply. Output files are named from the day, as before
+- CLI: `python setup_report_processor.py --25live 2026-10-06`
+- If 25Live cannot be reached, the day's card says so ("Could not reach 25Live") instead of a bare "failed"
+- **Note**: this is not an official 25Live API and could change without notice, so the PDF and Excel readers stay
+- Only the room, event name and times are read from 25Live. Its public view also shows requesters' contact details; those are never read
+- Test suite grew from 98 to 106 tests
+
 ## [4.2.0] - 2026-08-22: Database exports, and a timeline that reads at a glance
 
 ### A second event source

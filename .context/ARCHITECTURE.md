@@ -8,10 +8,10 @@ them by location rules, and generates sorted schedule files in multiple formats.
 
 ```
 PDF File  ──► SetupReportProcessor  ─┐
-                                     ├─► EventScheduleProcessor ──► Excel/CSV
-Excel File ─► DailyEventsExcel…     ─┘   (shared pipeline)          + timeline
+Excel File ─► DailyEventsExcel…     ─┼─► EventScheduleProcessor ──► Excel/CSV
+25Live day ─► TwentyFiveLive…       ─┘   (shared pipeline)          + timeline
                      ▲
-              create_processor() picks by file extension
+              create_processor() picks by LiveDay, then file extension
                      │
               GUI Wrapper (optional)
               ├── DragDropZone
@@ -92,6 +92,30 @@ PDF path's time parsing rather than introducing a second time model (ADR-008).
   time — the PDF parser's own third fallback (ADR-008)
 - Logs to `setup_report_processor.daily_events_excel`, a child of the logger the
   GUI panel attaches to, so its EXCLUDED lines reach the log panel
+
+---
+
+### TwentyFiveLiveProcessor
+
+**Purpose**: Pulls one day's room bookings straight from 25Live
+**Tech stack**: Python stdlib (`urllib`, `json`)
+**Key files**:
+- `twentyfive_live.py`
+
+**Interfaces**:
+- Input: a `LiveDay(date)`, queued like a file
+- Output: event dicts for the shared pipeline
+
+**Notes**:
+- Reads `rm_reservations.json` from the public guest view; no login, but not an
+  official API either (ADR-012)
+- `LiveDay` has `name` and `stem` so the queue and worker treat it as a file;
+  the processor overrides `_validate_source()` because there is no file
+- `Setup Ready By` is the reservation start, the PDF's "Setup Starts" time
+- Reads only room, event name, state and times; the guest view's personal
+  details are never touched
+- Network failure raises `ConnectionError` and a changed response shape raises
+  `ValueError`; both reach the queue card
 
 ---
 
@@ -197,6 +221,12 @@ below the stack in every stage. One-time setup lives in the header Settings menu
    fails loudly if a required column is gone
 4. **Row Parsing**: `_parse_event_row()` reads one booking per row, formatting
    `Event Start` / `Event End` into the PDF path's `"9:00 AM"` strings
+
+**25Live branch** (`TwentyFiveLiveProcessor`):
+
+2. **Fetch**: `_fetch_bookings()` downloads the day's room bookings
+3. **Booking Parsing**: `_parse_booking()` drops cancelled and other-day
+   bookings and formats reservation start / event end as `"9:00 AM"` strings
 
 **Shared from here on** (`EventScheduleProcessor`):
 

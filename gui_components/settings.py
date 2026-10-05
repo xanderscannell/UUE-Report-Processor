@@ -12,7 +12,7 @@ from pathlib import Path
 # Default configuration
 GUI_DEFAULTS = {
     "window_title": "Setup Report Processor",
-    "window_subtitle": "Setup Report PDFs and Excel exports → sorted schedules",
+    "window_subtitle": "PDFs, Excel exports, or 25Live → sorted schedules",
     "window_width": 900,
     "window_height": 780,
     "window_min_width": 720,

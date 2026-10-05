@@ -605,3 +605,76 @@ and `_on_gantt_ready` did `self._gantt_data[report] = rows` — keyed by *file*.
 `setup_report_processor.py:create_gantt_rows`,
 `gui_components/gantt_window.py:group_rows_by_day`, `:day_sort_key`,
 `:_days_for`, `:_place_clock`, `gui_wrapper.py:_on_gantt_ready`
+
+## ADR-012: Pull a day straight from 25Live as a third event source
+
+**Date**: 2026-10-05
+**Status**: Accepted
+
+**Context**:
+The PDF and the Excel export are both rendered from 25Live, and each one is a
+manual export someone has to run and save. The 25Live MCP (`Code/25live-mcp`)
+showed that UM-Dearborn's public guest view (the data
+`25live.collegenet.com/pro/umdearborn` shows visitors who are not signed in) is
+served as JSON with no login or API key. Its `rm_reservations.json` endpoint
+returns one object per room booking for a date range, with the same room names
+the whitelist uses.
+
+**Decision**:
+Add `TwentyFiveLiveProcessor` (`twentyfive_live.py`) as a third
+`EventScheduleProcessor` subclass, and queue a day from 25Live exactly like a
+file.
+
+- **A day is a queue item.** `LiveDay(day)` carries `name` and `stem`, the two
+  `Path` attributes the queue and the worker read, so `FileListManager`,
+  `ProcessorWorker` and the results screen needed one change between them (the
+  queue card's folder line). `create_processor()` dispatches a `LiveDay` before
+  it looks at extensions.
+- **The base class gained one hook**, `_validate_source()`: by default it checks
+  the file exists and calls `_validate_suffix()`, as `__init__` did inline
+  before. The 25Live processor overrides it, since there is no file.
+  `source_path` is kept and names the source in log lines.
+- **Setup Ready By is the reservation start** (when setup begins), which is the
+  PDF's "Setup Starts" time, its first choice. Closing is the event end, as in
+  the PDF. Unlike the Excel export (ADR-008), this source keeps setup lead time.
+- **Read only what the schedule needs.** The guest view also carries
+  requesters' personal details and editors' emails. The reader touches the room
+  name, event name, booking state and three timestamps, and nothing else.
+- **Stdlib only.** `urllib` and `json`; the fetch is about 20 lines, copied
+  rather than imported from the MCP repo so the exe build has no cross-repo
+  dependency.
+- **Entry points**: a "Pull from 25Live" button on the empty and workspace
+  pages opens `LiveDayDialog` (a From/To range, since a weekend stacks per
+  ADR-011), and the CLI takes `--25live YYYY-MM-DD` in place of a file.
+- Room names are whitespace-collapsed before matching, because 25Live writes
+  some with a doubled space (`FCS Michigan  East`).
+- A booking whose event starts on another day is excluded, so a booking across
+  midnight returned for two consecutive days is not drawn twice.
+- **Bookings are sorted by setup start before parsing.** 25Live returns them
+  by room, then time, and the timeline keeps source order within a day
+  (ADR-011), so without this a 25Live day stacked alphabetically by room.
+- The day's display name is plain ASCII ("Tue Oct 6, 2026 (25Live)") because
+  it reaches the log file, which is written in the system codepage.
+
+**Rationale**:
+- Same reasoning as ADR-008: a subclass reuses whitelist, sorting, output and
+  timeline instead of forking them.
+- Treating a day as a queue item needed no new stage and no mode switch, and a
+  batch can mix PDFs, exports and 25Live days.
+
+**Consequences**:
+- (+) No export step for the daily run, and setup lead times come back.
+- (-) **Unofficial endpoint.** CollegeNET can change it without notice; the PDF
+  and Excel readers stay first-class for that reason. A changed response shape
+  raises `ValueError` ("25Live sent a response this reader cannot read"), which
+  shows on the queue card.
+- (-) Needs a network connection. A failure raises `ConnectionError`, which the
+  worker's new `OSError` branch shows on the card ("Could not reach 25Live").
+  That branch also gives a file locked by another program its real message.
+- (-) The queue still says "files" when it holds days.
+
+**Files**:
+`twentyfive_live.py`, `setup_report_processor.py:_validate_source`,
+`:create_processor`, `:main`, `gui_components/live_day_dialog.py`,
+`gui_components/worker.py`, `gui_components/file_list.py:FileRow`,
+`gui_wrapper.py:_pull_from_25live`

@@ -38,7 +38,7 @@ def _short(message: str) -> str:
 
 
 class ProcessorWorker(QThread):
-    """Processes a queue of report files and reports progress via signals."""
+    """Processes a queue of reports (files or 25Live days) via signals."""
 
     status = Signal(str)                    # human-readable status line
     progress = Signal(int, int, int)        # percent, current, total
@@ -70,8 +70,9 @@ class ProcessorWorker(QThread):
             self.file_started.emit(report_path)
 
             try:
+                # A Path or a 25Live day; create_processor picks the reader.
                 processor = create_processor(
-                    str(report_path), config_path=self.options.get("config_path")
+                    report_path, config_path=self.options.get("config_path")
                 )
                 df = processor.process()
                 event_count = len(processor._events)
@@ -123,6 +124,11 @@ class ProcessorWorker(QThread):
                 summary["failed"] += 1
                 # Surface the reader's own message (a missing column, a
                 # legacy .xls) instead of a generic label.
+                self.file_done.emit(report_path, FAILED, _short(str(e)))
+            except OSError as e:
+                # 25Live unreachable, or a file locked by another program.
+                logger.error(f"Could not read {report_path.name} - {e}")
+                summary["failed"] += 1
                 self.file_done.emit(report_path, FAILED, _short(str(e)))
             except Exception as e:
                 logger.error(f"Error processing {report_path.name}: {e}")

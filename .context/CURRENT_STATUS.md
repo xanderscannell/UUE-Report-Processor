@@ -1,17 +1,41 @@
 # Project Status
 
-**Last updated**: 2026-08-22
+**Last updated**: 2026-10-05
 
 ## Current Position
 
-**Phase**: Preparing the v4.2.0 release
-**Subphase**: Changelog and docs current; remaining work is the on-display check,
-the tag, and the exe rebuild
-**Progress**: The app now reads the events database's `Daily Events - Excel`
-export alongside Daily Setup Report PDFs, dispatched by file extension. 87/87
-tests pass, including all 56 pre-existing ones **unedited**. Docs and ADR-008
-are current. Pending: a real-export soak beyond the single sample, an
-on-display GUI check, and the exe rebuild that was already outstanding.
+**Phase**: 25Live as a third event source (ADR-012), unreleased
+**Subphase**: Built, tested and checked against live data; next is a real-use
+soak and the exe rebuild
+**Progress**: A day can be pulled straight from 25Live's public guest view and
+queued like a file, from the GUI or with `--25live YYYY-MM-DD`. 106/106 tests
+pass, all 98 pre-existing ones unedited. v4.2.0 is tagged; this work sits under
+`[Unreleased]` in the changelog.
+
+## Recently Completed (2026-10-05: pull straight from 25Live)
+
+- **New source, `twentyfive_live.py`.** `TwentyFiveLiveProcessor` reads
+  `rm_reservations.json` for one day (stdlib `urllib`/`json`, no login). The
+  approach comes from the 25Live MCP in `Code/25live-mcp`; the fetch is copied,
+  not imported, so the exe has no cross-repo dependency.
+- **A day is a queue item.** `LiveDay(day)` mirrors `Path.name`/`.stem`, so the
+  queue, worker and results screen take it as-is. `create_processor()` routes a
+  `LiveDay` before checking extensions. Base class gained `_validate_source()`.
+- **Setup Ready By is the reservation start** (the PDF's "Setup Starts"), so
+  this source keeps setup lead time, unlike the Excel export.
+- **Privacy**: only room, event name, state and times are read. The guest view
+  also carries requesters' contact details; they are never touched.
+- **GUI**: "Pull from 25Live" button on the empty page and beside the compact
+  drop zone opens `LiveDayDialog` (From/To range). Card folder line reads
+  `25live.collegenet.com`. Worker gained an `OSError` branch so "Could not reach
+  25Live (...)" shows on the card.
+- **Verified live**: CLI pull of Tue Oct 6 2026 gave 10 whitelisted events with
+  real setup times (e.g. TIAA Counseling setup 8:45 for a 9:00 start). GUI
+  driven by script: queued Sat Oct 10 to Sun Oct 11, processed 2/2 (3 events),
+  and they stacked in the multi-day timeline. Offline path checked through the
+  worker with a patched `urlopen`.
+- **Gotcha found**: the day's name first used a middle dot, which the log
+  file's cp1252 codepage mangled. Names are plain ASCII now.
 
 ## Recently Completed (2026-08-22 — hover card survives a resting pointer)
 
@@ -339,6 +363,12 @@ Note: nothing in the app source carries a version string — the version lives i
 
 ## In Progress
 
+- [ ] Use the 25Live pull for a few real days and compare against that day's
+      PDF: same events, same Setup Ready By. 25Live returns campus-wide
+      bookings (375 on a weekday), so the whitelist is doing all the filtering
+- [ ] Rebuild the exe and confirm HTTPS works from the frozen build (Python's
+      `ssl` reads the Windows certificate store; not yet tried frozen)
+
 - [ ] Run the Excel path against more real exports (multi-day, and a day whose
       events actually land in whitelisted rooms) — the sample only exercises two
 - [ ] Confirm the PDF path is byte-identical on a **real** PDF; no PDF is
@@ -374,12 +404,14 @@ Note: nothing in the app source carries a version string — the version lives i
 ```
 setup_report_processor.py    [status: split into EventScheduleProcessor + SetupReportProcessor; +create_processor]
 daily_events_excel.py        [status: new — Daily Events Excel export reader]
+twentyfive_live.py           [status: new, 25Live reader (ADR-012)]
+gui_components/live_day_dialog.py [status: new, 25Live day picker]
 gui_wrapper.py               [status: 3-stage MainWindow + Settings menu; copy now source-neutral]
 gui_components/              [status: worker dispatches via create_processor; drop_zone reads SUPPORTED_SUFFIXES]
 gui_components/gantt_labels.py [status: new — in-bar label painter, device-pixel layout]
 gui_components/gantt_window.py [status: bars labeled; row floor + vertical scroll]
 location_config.json         [status: stable, v2 format]
-test_setup_report_processor.py [status: stable, 87/87 passing]
+test_setup_report_processor.py [status: 106/106 passing]
 requirements.txt             [status: updated, +PySide6 +pyqtgraph]
 UUE.ico                      [status: app icon — must ship beside exe for window icon]
 build_release.bat            [status: new — builds + zips the portable release]
@@ -387,6 +419,8 @@ build_release.bat            [status: new — builds + zips the portable release
 
 ## Recent Decisions
 
+- **2026-10-05**: A day pulled from 25Live is a third source and a queue item
+  like any file; it reads only room, name, state and times (ADR-012)
 - **2026-08-22**: Multiple days stack on one timeline, keyed by the date the
   events carry rather than by the file they came from (ADR-011)
 - **2026-08-22**: The Gantt Y axis names the day, grouped so a second day is a

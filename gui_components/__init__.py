@@ -24,6 +24,7 @@ from .preferences import PREFS_FILENAME, Preferences
 from .log_handler import QtLogHandler, LogPanel
 from .drop_zone import DragDropZone
 from .file_list import FileListManager
+from .live_day_dialog import LiveDayDialog
 from .location_editor import LocationEditor
 from .result_panel import ResultPanel
 from .worker import ProcessorWorker
@@ -57,6 +58,7 @@ __all__ = [
     "LogPanel",
     "DragDropZone",
     "FileListManager",
+    "LiveDayDialog",
     "LocationEditor",
     "ResultPanel",
     "ProcessorWorker",

@@ -11,6 +11,7 @@ Settings menu and the processing log behind a "Details" disclosure.
 
 Features:
 - Drag-and-drop PDF or Excel reports anywhere in the window (native Qt)
+- Pull days straight from 25Live, queued alongside report files
 - Batch processing on a background thread, with per-file status
 - Excel and/or CSV output
 - Embedded event timeline (pyqtgraph Gantt chart)
@@ -64,6 +65,7 @@ from gui_components import (
     group_rows_by_day,
     HeaderBar,
     KeepAwake,
+    LiveDayDialog,
     LocationEditor,
     PREFS_FILENAME,
     Preferences,
@@ -76,6 +78,7 @@ from gui_components import (
     label,
     prefix_of,
 )
+from twentyfive_live import LiveDay
 
 # A child of the logger the Details panel attaches its handler to (see
 # _setup_logging), so timeline messages surface there instead of vanishing
@@ -176,13 +179,19 @@ class MainWindow(QMainWindow):
         self.hero_drop.files_rejected.connect(self._on_files_rejected)
         layout.addWidget(self.hero_drop, stretch=1)
 
+        live_row = QHBoxLayout()
+        live_row.addStretch()
+        live_row.addWidget(self._build_live_button("Or pull a day from 25Live…"))
+        live_row.addStretch()
+        layout.addLayout(live_row)
+
         layout.addStretch()
 
         steps = QHBoxLayout()
         steps.setSpacing(SPACE["md"])
         for i, (title, body) in enumerate(
             [
-                ("Add reports", "Setup Report PDFs or Daily Events Excel."),
+                ("Add reports", "Setup Report PDFs, Daily Events Excel, or 25Live."),
                 ("Choose output", "Excel, CSV, or both."),
                 ("Process", "Get a sorted schedule and a timeline."),
             ],
@@ -222,7 +231,13 @@ class MainWindow(QMainWindow):
         self.compact_drop = DragDropZone(compact=True)
         self.compact_drop.files_added.connect(self._on_files_added)
         self.compact_drop.files_rejected.connect(self._on_files_rejected)
-        layout.addWidget(self.compact_drop)
+        add_row = QHBoxLayout()
+        add_row.setSpacing(SPACE["sm"])
+        add_row.addWidget(self.compact_drop, stretch=1)
+        live_button = self._build_live_button("From 25Live…")
+        live_button.setFixedHeight(DIMENSIONS["drop_zone_compact_height"])
+        add_row.addWidget(live_button)
+        layout.addLayout(add_row)
 
         self.file_list = FileListManager()
         self.file_list.files_changed.connect(self._on_queue_changed)
@@ -232,6 +247,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._build_action_area())
         layout.addStretch()
         return page
+
+    def _build_live_button(self, text: str) -> QPushButton:
+        button = QPushButton(text)
+        button.setProperty("variant", "secondary")
+        button.setCursor(Qt.PointingHandCursor)
+        button.setToolTip("Queue one or more days straight from 25Live")
+        button.clicked.connect(self._pull_from_25live)
+        return button
 
     def _build_output_card(self) -> QWidget:
         card = Card(padding=SPACE["md"])
@@ -428,8 +451,8 @@ class MainWindow(QMainWindow):
             self,
             "About Setup Report Processor",
             f"<b>{GUI_DEFAULTS['window_title']}</b><br><br>"
-            "Extracts event schedules from Daily Setup Report PDFs and Daily "
-            "Events Excel exports, and writes "
+            "Extracts event schedules from Daily Setup Report PDFs, Daily "
+            "Events Excel exports, or days pulled straight from 25Live, and writes "
             "chronologically sorted Excel/CSV files, plus an interactive "
             "timeline of the day.<br><br>"
             f"Working folder: {BASE_DIR}",
@@ -517,6 +540,11 @@ class MainWindow(QMainWindow):
         if added:
             self._set_stage(STAGE_WORK)
         self._update_process_button()
+
+    def _pull_from_25live(self):
+        dialog = LiveDayDialog(self)
+        if dialog.exec():
+            self._on_files_added([LiveDay(day) for day in dialog.days()])
 
     def _on_files_rejected(self, paths):
         for path in paths:
