@@ -709,9 +709,19 @@ people using the timeline wanted it without opening 25Live.
   comments are left out as internal notes.
 - **Details come only from what the day's download already holds**, also by
   the user's choice. No request per click, so it is instant and works offline
-  once a day is pulled. The event's own record (description, resources,
-  coordinator, request-form answers) would need one request per click; not
-  done.
+  once a day is pulled. The event's own record (description, coordinator,
+  request-form answers) would need one request per click; not done.
+- **25Live resources come from a second request per day**, not per click:
+  `rs_reservations.json`, joined to room bookings by `reservation_id` (all 47
+  on Oct 6 2026 matched). Each is `{name, quantity, instructions}`, with
+  instructions scrubbed and cancelled ones dropped; they travel as the row's
+  `Resources` list rather than inside `Details`, because each has structure the
+  popup lays out. Resources belong to the reservation, which can cover several
+  rooms, so such an event adds a "Resources shared with" detail naming the
+  others. Resources are optional: if that request fails, the day loads
+  without them and logs a warning. Excel and PDF carry no resources.
+- The popup's body scrolls once it would pass 85% of the screen height, since
+  a large event's resource list (12 for Kochoff AB that day) runs long.
 - **PDF events get the popup too**, with a note that the report carries no
   further details. Parsing more out of the PDF was declined: it means new regex
   on the most fragile reader, and no sample PDF is checked in.

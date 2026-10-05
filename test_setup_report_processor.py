@@ -1147,11 +1147,13 @@ def live(export_config):
     return TwentyFiveLiveProcessor(date(2026, 10, 6), config_path=export_config)
 
 
-def serve(monkeypatch, body):
-    """Make the next 25Live request answer with ``body``."""
-    monkeypatch.setattr(
-        twentyfive_live.urllib.request, "urlopen", lambda *a, **k: FakeResponse(body)
-    )
+def serve(monkeypatch, body, resources=None):
+    """Answer 25Live's room list with ``body`` and its resource list with ``resources``."""
+    def urlopen(request, *args, **kwargs):
+        if "rs_reservations" in request.full_url:
+            return FakeResponse(resources or {"resource_reservations": {}})
+        return FakeResponse(body)
+    monkeypatch.setattr(twentyfive_live.urllib.request, "urlopen", urlopen)
 
 
 class TestTwentyFiveLive:
@@ -1170,6 +1172,7 @@ class TestTwentyFiveLive:
             "closing_time": "5:00 PM",
             "date": "10-06-26",
             "details": {"Setup starts": "8:45 AM", "Event": "9:00 AM – 5:00 PM"},
+            "resources": [],
         }]
 
     def test_whitelist_and_cancellations_filter_bookings(self, live, monkeypatch):
@@ -1294,3 +1297,67 @@ class TestEventDetails:
         live.process()
         rows = live.create_gantt_rows(live._events)
         assert rows[0]["Details"]["Setup starts"] == "8:45 AM"
+
+
+def live_resource(reservation_id, name, quantity=1, instructions="", state=1):
+    """One resource booking shaped like 25Live's rs_reservations.json."""
+    return {
+        "reservation_id": reservation_id,
+        "reservation_state": state,
+        "quantity": quantity,
+        "resource_instructions": instructions,
+        "resources": {"resource_name": name},
+        "last_mod_user": "editor@umich.edu",
+    }
+
+
+class TestTwentyFiveLiveResources:
+    """Test the resources joined onto 25Live events for the popup."""
+
+    def test_resources_join_by_reservation(self, live, monkeypatch):
+        """Each event gets its own reservation's resources, scrubbed, cancelled ones dropped."""
+        kept = live_booking("UC 1225", name="kept")
+        kept["reservation_id"] = 1
+        other = live_booking("UC Kochoff Hall C", name="other", setup="10:00", start="10:00")
+        other["reservation_id"] = 2
+        serve(monkeypatch,
+              {"space_reservations": {"space_reservation": [kept, other]}},
+              {"resource_reservations": {"resource_reservation": [
+                  live_resource(1, "UC Chair (Banquet-Red)", 40, "rows, call 313-555-0100"),
+                  live_resource(1, "UC Podium", state=twentyfive_live.CANCELLED),
+                  live_resource(2, "UC Laptop (PC)"),
+              ]}})
+        live.process()
+
+        assert live._events[0]["resources"] == [{
+            "name": "UC Chair (Banquet-Red)",
+            "quantity": "40",
+            "instructions": "rows, call [phone removed]",
+        }]
+        assert [r["name"] for r in live._events[1]["resources"]] == ["UC Laptop (PC)"]
+        assert live.create_gantt_rows(live._events)[0]["Resources"][0]["quantity"] == "40"
+
+    def test_shared_reservation_names_the_other_room(self, live, monkeypatch):
+        """A reservation over two rooms says its resources are shared."""
+        first = live_booking("UC 1225")
+        second = live_booking("UC Kochoff  Hall C")
+        first["reservation_id"] = second["reservation_id"] = 7
+        serve(monkeypatch,
+              {"space_reservations": {"space_reservation": [first, second]}},
+              {"resource_reservations": {"resource_reservation": [
+                  live_resource(7, "UC Coat Rack", 2),
+              ]}})
+        live.process()
+
+        assert live._events[0]["details"]["Resources shared with"] == "UC Kochoff Hall C"
+        assert live._events[1]["details"]["Resources shared with"] == "UC 1225"
+
+    def test_unreadable_resources_still_load_the_day(self, live, monkeypatch):
+        """Resources are optional: a bad resource answer leaves events without them."""
+        serve(monkeypatch,
+              {"space_reservations": {"space_reservation": [live_booking("UC 1225")]}},
+              {"unexpected": "shape"})
+        live.process()
+
+        assert len(live._events) == 1
+        assert live._events[0]["resources"] == []

@@ -23,8 +23,11 @@ features are added compatibly.
 - **Click any bar on the timeline** to open everything else the report carried for that event: reference number, formal room name, layout, room instructions, headcounts, event type and organization. A 25Live event also shows its setup start, event times and takedown end
 - Works for Excel exports and 25Live days. A PDF event opens the same window with its name, room and times
 - No contact details are shown from either source, and email addresses or phone numbers inside room instructions are blanked out
+- **A 25Live event lists its resources**: each item with its quantity and setup instructions ("195 × UC Chair (Banquet-Red): 168 chairs in rows…"). When one booking covers two rooms, the popup says which other room shares those resources
+- A long resource list scrolls inside the popup instead of running off the screen
+- If 25Live's resource list cannot be fetched, the day still loads, just without resources
 - The hover card now says "Click for details" when there is more to see
-- Test suite grew from 98 to 109 tests
+- Test suite grew from 98 to 112 tests
 
 ## [4.2.0] - 2026-08-22: Database exports, and a timeline that reads at a glance
 

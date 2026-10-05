@@ -115,6 +115,9 @@ PDF path's time parsing rather than introducing a second time model (ADR-008).
 - Reads an allowlist of booking fields (`_details()`, ADR-013) for the
   timeline's event popup; contact details are never read and free text is
   scrubbed of emails and phone numbers
+- A second request per day (`rs_reservations.json`, `_fetch_resources()`)
+  supplies each reservation's resources; it is optional and a failure only
+  logs a warning
 - Network failure raises `ConnectionError` and a changed response shape raises
   `ValueError`; both reach the queue card
 
@@ -169,7 +172,7 @@ PDF path's time parsing rather than introducing a second time model (ADR-008).
 - `gui_components/worker.py` — `ProcessorWorker` background `QThread`
 - `gui_components/gantt_window.py` — embedded pyqtgraph event timeline
 - `gui_components/event_details.py`: popup opened by clicking a bar, showing the
-  row's `Details` (ADR-013)
+  row's `Details` and, for 25Live, its `Resources` (ADR-013)
 
 **Theming rule**: custom-painted widgets must read colors from `style.tokens()`,
 which returns the scheme `apply_theme()` selected. Asking the OS directly

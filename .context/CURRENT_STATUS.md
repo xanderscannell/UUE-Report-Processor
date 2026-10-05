@@ -8,11 +8,25 @@
 **Subphase**: Built, tested and checked against live data; next is a real-use
 soak and the exe rebuild
 **Progress**: A day can be pulled straight from 25Live's public guest view and
-queued like a file, from the GUI or with `--25live YYYY-MM-DD`. 109/109 tests
+queued like a file, from the GUI or with `--25live YYYY-MM-DD`. 112/112 tests
 pass, all 98 pre-existing ones unedited. v4.2.0 is tagged; this work sits under
 `[Unreleased]` in the changelog.
 
-## Recently Completed (2026-10-05: click a bar for the event's details)
+## Recently Completed (2026-10-05: resources in the event popup)
+
+- **25Live events list their resources** in the popup: quantity, item and
+  instructions, from `rs_reservations.json` fetched once per day and joined by
+  `reservation_id`. A reservation over several rooms adds "Resources shared
+  with". Optional: a failed resource fetch logs a warning and the day loads.
+- The popup body scrolls past 85% of the screen height.
+- **Verified** by clicks on the real Oct 6 timeline: Research Night (FCS
+  Michigan East) 8 resources; Conversation with the Chancellor in Kochoff AB 12
+  resources, scrolling, "shared with UC 1227", and from UC 1227 "shared with UC
+  Kochoff Hall AB"; TIAA Counseling unchanged with no scrollbar. 112/112 pass.
+- **Known limit**: scrubbing removes emails and phone numbers, not names, so
+  free-text instructions can still name staff ("7:00 am-Greg Taylor arrives").
+
+## Earlier Completed (2026-10-05: click a bar for the event's details)
 
 - **Clicking a timeline bar opens `EventDetailsDialog`** (`event_details.py`)
   with the row's `Details`: reference, formal room, layout, room instructions,
@@ -432,7 +446,7 @@ gui_components/              [status: worker dispatches via create_processor; dr
 gui_components/gantt_labels.py [status: new — in-bar label painter, device-pixel layout]
 gui_components/gantt_window.py [status: bars labeled; row floor + vertical scroll]
 location_config.json         [status: stable, v2 format]
-test_setup_report_processor.py [status: 109/109 passing]
+test_setup_report_processor.py [status: 112/112 passing]
 requirements.txt             [status: updated, +PySide6 +pyqtgraph]
 UUE.ico                      [status: app icon — must ship beside exe for window icon]
 build_release.bat            [status: new — builds + zips the portable release]

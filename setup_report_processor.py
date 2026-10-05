@@ -175,8 +175,9 @@ class EventScheduleProcessor:
         Each record is a dict with ``event_name``, ``location``, ``setup_time``
         and ``closing_time``. Locations are already filtered against the
         whitelist by the time they are returned. A source with more to say
-        adds ``details``, an ordered ``{label: text}`` dict that the timeline's
-        event popup shows; it never reaches the schedule files.
+        adds ``details``, an ordered ``{label: text}`` dict, and ``resources``,
+        a list of ``{name, quantity, instructions}``, both shown by the
+        timeline's event popup; neither reaches the schedule files.
 
         Returns:
             List of event dictionaries
@@ -426,6 +427,9 @@ class EventScheduleProcessor:
             # reader sets none, so its rows are unchanged.
             if event.get("details"):
                 row["Details"] = event["details"]
+            # 25Live only: [{name, quantity, instructions}] for the popup.
+            if event.get("resources"):
+                row["Resources"] = event["resources"]
             rows.append(row)
 
         logger.info(f"Created {len(rows)} Gantt event rows from {len(events)} events")

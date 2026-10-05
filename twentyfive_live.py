@@ -14,8 +14,9 @@ without notice, which is why the PDF and Excel readers stay first-class.
 
 That guest view also carries requesters' personal details. This reader takes
 an allowlist of booking fields (room, event, layout, instructions, headcounts,
-organization, times) and no contact details; free text has email addresses and
-phone numbers scrubbed. See ADR-012 and ADR-013.
+organization, times, and the reservation's resources) and no contact details;
+free text has email addresses and phone numbers scrubbed. See ADR-012 and
+ADR-013.
 """
 
 import json
@@ -74,6 +75,11 @@ def _scrub(text) -> str:
     return _PHONE.sub("[phone removed]", text).strip()
 
 
+def _room(booking: dict) -> str:
+    """A booking's room name, with 25Live's doubled spaces ("FCS Michigan  East") collapsed."""
+    return " ".join(str((booking.get("spaces") or {}).get("space_name") or "").split())
+
+
 def _local(timestamp: str) -> datetime:
     """Read "2026-10-06T08:45:00-04:00" as campus local time."""
     return datetime.fromisoformat(timestamp).replace(tzinfo=None)
@@ -93,6 +99,9 @@ class TwentyFiveLiveProcessor(EventScheduleProcessor):
             config_path: Optional path to location config JSON file
         """
         self.day = day
+        # Filled per fetch by _collect_events, read by _parse_booking.
+        self._resources: Dict[object, List[Dict[str, str]]] = {}
+        self._rooms_by_reservation: Dict[object, List[str]] = {}
         # There is no file: source_path only names the source in log lines.
         super().__init__(LiveDay(day).name, config_path=config_path)
 
@@ -114,6 +123,15 @@ class TwentyFiveLiveProcessor(EventScheduleProcessor):
             key=lambda b: str(b.get("reservation_start_dt") or ""),
         )
 
+        # Resources belong to the reservation, which can cover several rooms,
+        # so each event also needs to know the reservation's other rooms.
+        self._resources = self._fetch_resources()
+        self._rooms_by_reservation = {}
+        for booking in bookings:
+            self._rooms_by_reservation.setdefault(
+                booking.get("reservation_id"), []
+            ).append(_room(booking))
+
         events = [e for e in map(self._parse_booking, bookings) if e]
         logger.info(
             f"Found {len(events)} valid events in 25Live "
@@ -132,9 +150,51 @@ class TwentyFiveLiveProcessor(EventScheduleProcessor):
             ConnectionError: If 25Live cannot be reached
             ValueError: If 25Live answers with something this reader cannot read
         """
+        return self._fetch_list("rm_reservations", "space_reservations", "space_reservation")
+
+    def _fetch_resources(self) -> Dict[object, List[Dict[str, str]]]:
+        """
+        Download the day's resource bookings, grouped by reservation id.
+
+        Resources only feed the event popup, so a failure here is logged and
+        the day still loads without them.
+
+        Returns:
+            ``{reservation id: [{name, quantity, instructions}]}``, allowlisted
+        """
+        try:
+            items = self._fetch_list(
+                "rs_reservations", "resource_reservations", "resource_reservation"
+            )
+        except (ConnectionError, ValueError) as e:
+            logger.warning(f"25Live resources unavailable, loading without them: {e}")
+            return {}
+
+        grouped: Dict[object, List[Dict[str, str]]] = {}
+        for item in items:
+            if item.get("reservation_state") == CANCELLED:
+                continue
+            name = str((item.get("resources") or {}).get("resource_name") or "").strip()
+            if not name:
+                continue
+            grouped.setdefault(item.get("reservation_id"), []).append({
+                "name": name,
+                "quantity": str(item.get("quantity") or ""),
+                "instructions": _scrub(item.get("resource_instructions")),
+            })
+        return grouped
+
+    def _fetch_list(self, endpoint: str, container: str, key: str) -> list:
+        """
+        Download one of 25Live's day lists and return its items.
+
+        Raises:
+            ConnectionError: If 25Live cannot be reached
+            ValueError: If 25Live answers with something this reader cannot read
+        """
         stamp = f"{self.day:%Y%m%d}"
         request = urllib.request.Request(
-            f"{BASE_URL}/rm_reservations.json?start_dt={stamp}&end_dt={stamp}",
+            f"{BASE_URL}/{endpoint}.json?start_dt={stamp}&end_dt={stamp}",
             headers={"User-Agent": "UUE-Report-Processor"},
         )
         try:
@@ -146,15 +206,15 @@ class TwentyFiveLiveProcessor(EventScheduleProcessor):
             ) from e
 
         try:
-            bookings = data["space_reservations"].get("space_reservation")
+            items = data[container].get(key)
         except (KeyError, AttributeError, TypeError) as e:
             raise ValueError("25Live sent a response this reader cannot read") from e
 
         # A day with no bookings omits the key, and a day with one booking
         # sends it as a bare object rather than a one-item list.
-        if bookings is None:
+        if items is None:
             return []
-        return bookings if isinstance(bookings, list) else [bookings]
+        return items if isinstance(items, list) else [items]
 
     def _parse_booking(self, booking: dict) -> Optional[Dict[str, str]]:
         """
@@ -183,10 +243,7 @@ class TwentyFiveLiveProcessor(EventScheduleProcessor):
             logger.info(f"EXCLUDED: '{event_name}' - cancelled")
             return None
 
-        # 25Live sometimes doubles a space ("FCS Michigan  East").
-        raw_location = " ".join(
-            str((booking.get("spaces") or {}).get("space_name") or "").split()
-        )
+        raw_location = _room(booking)
         if not raw_location:
             logger.info(f"EXCLUDED: '{event_name}' - no valid location found")
             return None
@@ -216,13 +273,26 @@ class TwentyFiveLiveProcessor(EventScheduleProcessor):
             )
             return None
 
+        reservation = booking.get("reservation_id")
+        resources = self._resources.get(reservation, [])
+        details = self._details(booking, event_name, setup, start, end)
+        # Resources are booked for the whole reservation, so say which other
+        # rooms they cover rather than imply this room gets all of them.
+        others = [
+            room for room in self._rooms_by_reservation.get(reservation, [])
+            if room != raw_location
+        ]
+        if resources and others:
+            details["Resources shared with"] = ", ".join(others)
+
         return {
             "event_name": event_name,
             "location": location,
             "setup_time": _format_time(setup),
             "closing_time": _format_time(end),
             "date": start.strftime("%m-%d-%y"),
-            "details": self._details(booking, event_name, setup, start, end),
+            "details": details,
+            "resources": resources,
         }
 
     @staticmethod
