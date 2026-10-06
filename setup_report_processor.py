@@ -176,8 +176,9 @@ class EventScheduleProcessor:
         and ``closing_time``. Locations are already filtered against the
         whitelist by the time they are returned. A source with more to say
         adds ``details``, an ordered ``{label: text}`` dict, and ``resources``,
-        a list of ``{name, quantity, instructions}``, both shown by the
-        timeline's event popup; neither reaches the schedule files.
+        a list of ``{name, quantity, instructions}``, and ``url``, the event's
+        page, all for the timeline's event popup; none reach the schedule
+        files.
 
         Returns:
             List of event dictionaries
@@ -430,6 +431,9 @@ class EventScheduleProcessor:
             # 25Live only: [{name, quantity, instructions}] for the popup.
             if event.get("resources"):
                 row["Resources"] = event["resources"]
+            # 25Live only: the event's page, for the popup's "Open in 25Live".
+            if event.get("url"):
+                row["Url"] = event["url"]
             rows.append(row)
 
         logger.info(f"Created {len(rows)} Gantt event rows from {len(events)} events")

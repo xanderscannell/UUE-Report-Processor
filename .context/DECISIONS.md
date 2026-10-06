@@ -722,6 +722,14 @@ people using the timeline wanted it without opening 25Live.
   without them and logs a warning. Excel and PDF carry no resources.
 - The popup's body scrolls once it would pass 85% of the screen height, since
   a large event's resource list (12 for Kochoff AB that day) runs long.
+- **A 25Live event links to its own page.** Bookings carry `event.event_id`,
+  which is the id in the site's URL
+  (`/pro/umdearborn#!/home/event/<id>/details`); the record's `url` becomes the
+  row's `Url`, and the popup shows "Open in 25Live", opened with
+  `QDesktopServices.openUrl`. Checked: 114606 is "2026 Conversation with the
+  Chancellor" (the user's own link), and 25Live's `event.json` confirms 115140
+  and 115672. The Excel export carries only the reference number, so its
+  events have no link.
 - **PDF events get the popup too**, with a note that the report carries no
   further details. Parsing more out of the PDF was declined: it means new regex
   on the most fragile reader, and no sample PDF is checked in.

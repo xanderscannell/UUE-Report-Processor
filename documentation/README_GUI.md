@@ -117,8 +117,8 @@ Open it with **View Timeline** on the results screen, or turn on
   stays until you leave the bar
 - Click a bar for the rest of what the report carried (reference, layout, room
   instructions, headcounts, organization, and from 25Live the setup and takedown
-  times and the booked resources with their instructions). Contact details are
-  never shown
+  times and the booked resources with their instructions, plus an **Open in
+  25Live** button). Contact details are never shown
 - The view is fixed (no accidental panning or zooming), but scrolls vertically
   once a day has more events than fit at a readable row height
 - **Several days at once** — the left axis names the date, so days stack into

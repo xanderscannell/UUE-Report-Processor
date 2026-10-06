@@ -3,15 +3,15 @@ Event Details Popup
 ===================
 Opened by clicking a bar on the timeline. The bar and its hover card show the
 name, room and times; this shows everything else the source carried for that
-event: the row's ``Details`` and, for 25Live, its ``Resources`` (see
-``create_gantt_rows``).
+event: the row's ``Details`` and, for 25Live, its ``Resources`` and a button
+to its page on the 25Live site (``Url``; see ``create_gantt_rows``).
 
 What is in either is decided by each reader's allowlist, so no contact details
 ever reach this dialog (ADR-013).
 """
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -109,7 +109,14 @@ class EventDetailsDialog(QDialog):
         layout.addWidget(self._scroll)
 
         bottom = QHBoxLayout()
+        bottom.setSpacing(SPACE["sm"])
         bottom.addStretch()
+        if row.get("Url"):
+            link_btn = QPushButton("Open in 25Live")
+            link_btn.setCursor(Qt.PointingHandCursor)
+            link_btn.setToolTip(row["Url"])
+            link_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(row["Url"])))
+            bottom.addWidget(link_btn)
         close_btn = QPushButton("Close")
         close_btn.setProperty("variant", "secondary")
         close_btn.setCursor(Qt.PointingHandCursor)

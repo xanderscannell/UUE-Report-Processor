@@ -26,8 +26,9 @@ features are added compatibly.
 - **A 25Live event lists its resources**: each item with its quantity and setup instructions ("195 × UC Chair (Banquet-Red): 168 chairs in rows…"). When one booking covers two rooms, the popup says which other room shares those resources
 - A long resource list scrolls inside the popup instead of running off the screen
 - If 25Live's resource list cannot be fetched, the day still loads, just without resources
+- **Open in 25Live**: a 25Live event's popup has a button that opens the event's own page on the 25Live site
 - The hover card now says "Click for details" when there is more to see
-- Test suite grew from 98 to 112 tests
+- Test suite grew from 98 to 113 tests
 
 ## [4.2.0] - 2026-08-22: Database exports, and a timeline that reads at a glance
 

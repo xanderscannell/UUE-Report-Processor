@@ -37,6 +37,9 @@ logger = logging.getLogger("setup_report_processor.twentyfive_live")
 # The guest view's JSON endpoints.
 BASE_URL = "https://25live.collegenet.com/25live/data/umdearborn/run"
 
+# The event's own page in the 25Live site, opened from the timeline popup.
+EVENT_URL = "https://25live.collegenet.com/pro/umdearborn#!/home/event/{}/details"
+
 # Seconds to wait for 25Live before giving up on a day.
 TIMEOUT = 60
 
@@ -293,6 +296,7 @@ class TwentyFiveLiveProcessor(EventScheduleProcessor):
             "date": start.strftime("%m-%d-%y"),
             "details": details,
             "resources": resources,
+            "url": EVENT_URL.format(event["event_id"]) if event.get("event_id") else "",
         }
 
     @staticmethod

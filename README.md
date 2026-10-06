@@ -86,8 +86,9 @@ Click **View Timeline** on the results screen to open the day's schedule as a Ga
 - **Click a bar** for everything else the report carried: reference number,
   layout, room instructions, headcounts, organization, and from 25Live the full
   setup, event and takedown times plus the booked **resources** (quantity, item,
-  and setup instructions). Contact details are never shown. PDF events have no
-  further details to show
+  and setup instructions). A 25Live event also has an **Open in 25Live** button
+  that opens its page on the 25Live site. Contact details are never shown. PDF
+  events have no further details to show
 - **Several days at once** — the date is on the left axis, so a weekend stacks
   into one chart. Drop one file per day (the database exports one day at a
   time); a **Day** filter appears for narrowing to a single day
@@ -313,7 +314,7 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 │   └── gantt_window.py           #   Embedded Gantt chart
 ├── location_config.json          # Location whitelist configuration
 ├── UUE.ico                       # Application icon
-├── test_setup_report_processor.py # Test suite (112 tests)
+├── test_setup_report_processor.py # Test suite (113 tests)
 ├── requirements.txt              # Dependencies
 ├── build_release.bat             # Builds + zips the portable release
 ├── CHANGELOG.md                  # Release history

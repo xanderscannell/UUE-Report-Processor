@@ -8,11 +8,19 @@
 **Subphase**: Built, tested and checked against live data; next is a real-use
 soak and the exe rebuild
 **Progress**: A day can be pulled straight from 25Live's public guest view and
-queued like a file, from the GUI or with `--25live YYYY-MM-DD`. 112/112 tests
+queued like a file, from the GUI or with `--25live YYYY-MM-DD`. 113/113 tests
 pass, all 98 pre-existing ones unedited. v4.2.0 is tagged; this work sits under
 `[Unreleased]` in the changelog.
 
-## Recently Completed (2026-10-05: resources in the event popup)
+## Recently Completed (2026-10-05: Open in 25Live)
+
+- A 25Live event's popup has **Open in 25Live**, built from `event.event_id`
+  (`EVENT_URL` in `twentyfive_live.py`). Verified by clicking the button on the
+  real timeline with `QDesktopServices` intercepted: the Chancellor event gave
+  the user's exact URL (114606); `event.json` confirms 115140 = TIAA Counseling
+  and 115672 = Research Night. Excel and PDF events show no button. 113/113.
+
+## Earlier Completed (2026-10-05: resources in the event popup)
 
 - **25Live events list their resources** in the popup: quantity, item and
   instructions, from `rs_reservations.json` fetched once per day and joined by
@@ -446,7 +454,7 @@ gui_components/              [status: worker dispatches via create_processor; dr
 gui_components/gantt_labels.py [status: new — in-bar label painter, device-pixel layout]
 gui_components/gantt_window.py [status: bars labeled; row floor + vertical scroll]
 location_config.json         [status: stable, v2 format]
-test_setup_report_processor.py [status: 112/112 passing]
+test_setup_report_processor.py [status: 113/113 passing]
 requirements.txt             [status: updated, +PySide6 +pyqtgraph]
 UUE.ico                      [status: app icon — must ship beside exe for window icon]
 build_release.bat            [status: new — builds + zips the portable release]

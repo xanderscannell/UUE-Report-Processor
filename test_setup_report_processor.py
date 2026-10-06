@@ -1173,6 +1173,7 @@ class TestTwentyFiveLive:
             "date": "10-06-26",
             "details": {"Setup starts": "8:45 AM", "Event": "9:00 AM – 5:00 PM"},
             "resources": [],
+            "url": "",
         }]
 
     def test_whitelist_and_cancellations_filter_bookings(self, live, monkeypatch):
@@ -1361,3 +1362,14 @@ class TestTwentyFiveLiveResources:
 
         assert len(live._events) == 1
         assert live._events[0]["resources"] == []
+
+    def test_event_links_to_its_25live_page(self, live, monkeypatch):
+        """The event id becomes the 25Live site's own event URL."""
+        booking = live_booking("UC 1225")
+        booking["event"]["event_id"] = 114606
+        serve(monkeypatch, {"space_reservations": {"space_reservation": [booking]}})
+        live.process()
+
+        url = "https://25live.collegenet.com/pro/umdearborn#!/home/event/114606/details"
+        assert live._events[0]["url"] == url
+        assert live.create_gantt_rows(live._events)[0]["Url"] == url
