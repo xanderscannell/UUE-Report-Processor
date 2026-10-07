@@ -13,16 +13,16 @@ edge, the room sits underneath::
     +-----------------------------------------------+
 
 Text is laid out against each bar's measured **pixel** box, not its width in
-hours, so it re-fits itself on every window resize and steps down a ladder as
-the space runs out: all three fields, then the name with whichever single field
-fits beside it, then the name alone elided, and finally — for a fifteen-minute
-event that can never hold text — the label spills into the whitespace beside
-the bar, the way a short cue gets its label in a printed run sheet's margin.
-Without that last rung only the long events would ever be labeled.
+hours, so it re-fits itself on every window resize. Rows are never shorter than
+the name plus the room, so the room always has its own line. The time range
+appears only when it fits beside the whole name; the name elides as the bar
+narrows. A bar too narrow to show the room in full (or a readable stub of the
+name) moves its label, both lines, into the whitespace beside it, the way a
+short cue gets its label in a printed run sheet's margin.
 
-The room outranks the time range whenever only one of them fits. The X axis
-already places an event to within a few minutes, but since the Y axis became a
-date, nothing outside the bar says which room an event is in.
+The room is never dropped or elided inside a bar. The X axis already places an
+event to within a few minutes, but since the Y axis became a date, nothing
+outside the label says which room an event is in.
 
 ``pg.BarGraphItem`` cannot draw text at all, and a ``pg.TextItem`` per bar
 cannot measure the bar it belongs to, so neither can elide. A ``GraphicsObject``
@@ -73,13 +73,14 @@ def _meta_font() -> QFont:
 
 def min_row_height(bar_height: float, floor: int) -> int:
     """
-    The shortest row that still leaves a legible label inside its bar.
+    The shortest row whose bar still holds the event name with the room below.
 
     Measured from the real font rather than assumed, so the chart stays readable
     at any display scaling. ``floor`` is the configured minimum, which wins when
     the font turns out not to need the room.
     """
-    needed = (QFontMetrics(_name_font()).height() + 2 * PAD_Y) / max(bar_height, 0.01)
+    text_h = QFontMetrics(_name_font()).height() + QFontMetrics(_meta_font()).height()
+    needed = (text_h + 2 * PAD_Y) / max(bar_height, 0.01)
     return max(floor, int(math.ceil(needed)))
 
 
@@ -142,63 +143,48 @@ class BarLabels(pg.GraphicsObject):
         if not headline or rect.height() < self._fm_name.height():
             return
 
-        # Outside the bar there is no second line to put the room on, and the Y
-        # axis no longer carries it either, so it rides along with the name.
-        spilled = " · ".join(part for part in (name, location) if part)
-
+        # The room only earns a second line when it is not already the headline.
+        sub = location if name else ""
         inner = rect.width() - 2 * PAD_X
-        head_w = self._fm_name.horizontalAdvance(headline)
 
-        # Inside the bar is where a label belongs, and an elided name still
-        # identifies its event. Only a bar with no usable inside — a fifteen
-        # minute event is a dozen pixels wide — hands its name to the whitespace
-        # beside it.
-        if inner < self._floor_w:
-            self._paint_spill(p, rect, spilled, view_px)
+        # The room is always shown whole: nothing else on the chart names it.
+        # A bar too narrow for the room, or for a readable stub of the name,
+        # hands the whole label to the whitespace beside it.
+        room_w = (
+            self._fm_meta.horizontalAdvance(sub) if sub
+            else self._fm_name.horizontalAdvance(location) if location
+            else 0
+        )
+        if inner < self._floor_w or room_w > inner:
+            self._paint_spill(p, rect, headline, sub, view_px)
             return
 
         ink = QColor(ink_on(bar["color"]))
         sub_ink = QColor(ink)
         sub_ink.setAlpha(SUB_ALPHA)
 
-        # The room only earns a second line when it is not already the headline.
-        # An elided room reads as a bug when the whole string is sitting on the
-        # axis a few inches to the left, so the second line is all or nothing.
-        sub = location if name and location else ""
         head_h = self._fm_name.height()
-        sub_h = self._fm_meta.height()
-        two_line = (
-            bool(sub)
-            and rect.height() >= head_h + sub_h
-            and self._fm_meta.horizontalAdvance(sub) <= inner
-        )
+        sub_h = self._fm_meta.height() if sub else 0
 
         p.save()
         p.setClipRect(rect)
 
-        block_h = head_h + (sub_h if two_line else 0)
         head = QRectF(
             rect.left() + PAD_X,
-            rect.top() + (rect.height() - block_h) / 2,
+            rect.top() + (rect.height() - head_h - sub_h) / 2,
             inner,
             head_h,
         )
 
-        # One field rides the right edge of the headline row. On two lines the
-        # room already has its own line, so the times go here; on one line the
-        # room takes the slot and the times give way, because the X axis already
-        # places the event and nothing else names the room. Either way the name
-        # never gives up characters to make space.
-        for trailer in ([times] if two_line else [sub, times]):
-            if not trailer:
-                continue
-            trailer_w = self._fm_meta.horizontalAdvance(trailer)
-            if head_w + GAP + trailer_w <= inner:
+        # The times ride the right edge of the headline row when they fit beside
+        # the whole name; the name never gives up characters to make space.
+        if times:
+            times_w = self._fm_meta.horizontalAdvance(times)
+            if self._fm_name.horizontalAdvance(headline) + GAP + times_w <= inner:
                 p.setFont(self._font_meta)
                 p.setPen(sub_ink)
-                p.drawText(head, Qt.AlignRight | Qt.AlignVCenter, trailer)
-                head.setWidth(inner - GAP - trailer_w)
-                break
+                p.drawText(head, Qt.AlignRight | Qt.AlignVCenter, times)
+                head.setWidth(inner - GAP - times_w)
 
         p.setFont(self._font_name)
         p.setPen(ink)
@@ -208,7 +194,7 @@ class BarLabels(pg.GraphicsObject):
             self._fm_name.elidedText(headline, Qt.ElideRight, int(head.width())),
         )
 
-        if two_line:
+        if sub:
             below = QRectF(rect.left() + PAD_X, head.bottom(), inner, sub_h)
             p.setFont(self._font_meta)
             p.setPen(sub_ink)
@@ -216,29 +202,37 @@ class BarLabels(pg.GraphicsObject):
 
         p.restore()
 
-    def _paint_spill(self, p, rect: QRectF, text: str, view_px: QRectF) -> bool:
+    def _paint_spill(self, p, rect: QRectF, headline: str, sub: str, view_px: QRectF):
         """
-        Label a bar in the whitespace beside it. Returns False when even that is
-        too tight, leaving the caller to decide what to do instead.
+        Label a bar in the whitespace beside it, laid out as it would be inside:
+        the name, and the room on the line below.
 
         Every event gets its own row, so the space next to a bar is always free.
         """
         right = view_px.right() - rect.right() - PAD_X
         left = rect.left() - view_px.left() - PAD_X
         if right >= left:
-            box = QRectF(rect.right() + PAD_X, rect.top(), right, rect.height())
-            align = Qt.AlignLeft
+            x, width, align = rect.right() + PAD_X, right, Qt.AlignLeft
         else:
-            box = QRectF(view_px.left(), rect.top(), left, rect.height())
-            align = Qt.AlignRight
-        if box.width() < self._fm_name.horizontalAdvance("Ww"):
-            return False
+            x, width, align = view_px.left(), left, Qt.AlignRight
+        if width < self._fm_name.horizontalAdvance("Ww"):
+            return
 
-        p.setFont(self._font_name)
+        head_h = self._fm_name.height()
+        sub_h = self._fm_meta.height() if sub else 0
+        head = QRectF(x, rect.top() + (rect.height() - head_h - sub_h) / 2, width, head_h)
+
         p.setPen(self._muted)
+        p.setFont(self._font_name)
         p.drawText(
-            box,
+            head,
             align | Qt.AlignVCenter,
-            self._fm_name.elidedText(text, Qt.ElideRight, int(box.width())),
+            self._fm_name.elidedText(headline, Qt.ElideRight, int(width)),
         )
-        return True
+        if sub:
+            p.setFont(self._font_meta)
+            p.drawText(
+                QRectF(x, head.bottom(), width, sub_h),
+                align | Qt.AlignVCenter,
+                self._fm_meta.elidedText(sub, Qt.ElideRight, int(width)),
+            )

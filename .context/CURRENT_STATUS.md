@@ -1,6 +1,6 @@
 # Project Status
 
-**Last updated**: 2026-10-05
+**Last updated**: 2026-10-07
 
 ## Current Position
 
@@ -12,7 +12,16 @@ queued like a file, from the GUI or with `--25live YYYY-MM-DD`. 113/113 tests
 pass, all 98 pre-existing ones unedited. v4.2.0 is tagged; this work sits under
 `[Unreleased]` in the changelog.
 
-## Recently Completed (2026-10-05: Open in 25Live)
+## Recently Completed (2026-10-07: room always on the timeline)
+
+- `gantt_labels.py`: `min_row_height` now floors rows at name + room line, so
+  every bar inside has two lines. The room is shown whole or the label (both
+  lines) spills beside the bar; times only appear when they fit beside the
+  whole name. The old "room on the headline row" rung is gone.
+- **Verified** by offscreen renders (synthetic day at 1400 and 900 px wide, and
+  40 events at 500 px tall: 7 rows visible, two lines each). 115/115 pass.
+
+## Earlier Completed (2026-10-05: Open in 25Live)
 
 - A 25Live event's popup has **Open in 25Live**, built from `event.event_id`
   (`EVENT_URL` in `twentyfive_live.py`). Verified by clicking the button on the

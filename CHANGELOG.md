@@ -30,6 +30,12 @@ features are added compatibly.
 - The hover card now says "Click for details" when there is more to see
 - Test suite grew from 98 to 113 tests
 
+### Every bar shows its room
+
+- **Timeline rows are always tall enough for the event name with the room on the line below**, so the room is never dropped to make space. A busy day scrolls a little sooner as a result
+- **A bar too narrow to hold the whole room name puts its label beside the bar instead**, still on two lines, rather than cutting the room short
+- The time range still rides the bar's right edge when it fits beside the name
+
 ## [4.2.0] - 2026-08-22: Database exports, and a timeline that reads at a glance
 
 ### A second event source
