@@ -32,7 +32,11 @@
         },
         {
             "name": "EIC Location/Space",
-            "enabled": false
+            "enabled": true
+        },
+        {
+            "name": "ELB Atrium",
+            "enabled": true
         },
         {
             "name": "ELB Location/Space",
@@ -243,6 +247,10 @@
         "FCS": {
             "label": "Fairlane Center South",
             "color": 1
+        },
+        "ELB": {
+            "label": "ELB",
+            "color": 2
         }
     }
 }

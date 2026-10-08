@@ -133,6 +133,11 @@ class TestLocationValidation:
         result = processor._match_whitelist_location("FCS Michigan East Empty")
         assert result == "FCS Michigan East"
 
+    def test_doubled_space_still_matches(self, processor):
+        """25Live's doubled space ("FCS Michigan  West") matches the single-spaced config."""
+        result = processor._match_whitelist_location("FCS Michigan  West Classroom")
+        assert result == "FCS Michigan West"
+
     def test_valid_fcs_180(self, processor):
         """Test valid FCS 180 location."""
         result = processor._match_whitelist_location("FCS 180 Classroom")

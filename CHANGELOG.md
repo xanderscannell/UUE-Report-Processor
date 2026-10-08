@@ -36,6 +36,10 @@ features are added compatibly.
 - **A bar too narrow to hold the whole room name puts its label beside the bar instead**, still on two lines, rather than cutting the room short
 - The time range still rides the bar's right edge when it fits beside the name
 
+### Fixed
+
+- A room name with a doubled space ("FCS Michigan  East", as 25Live writes it) now matches its single-spaced whitelist entry from every source, not just 25Live. An Excel export carrying the doubled space would have dropped the event
+
 ## [4.2.0] - 2026-08-22: Database exports, and a timeline that reads at a glance
 
 ### A second event source

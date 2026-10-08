@@ -332,6 +332,9 @@ class EventScheduleProcessor:
         Returns:
             The matched whitelist location name, or None if no match
         """
+        # 25Live doubles some spaces ("FCS Michigan  East"); the config never does.
+        raw_location = " ".join(raw_location.split())
+
         # Check whitelist (startswith matching)
         # Whitelist is sorted longest-first, so most specific match wins
         for location_name in self._location_whitelist:
