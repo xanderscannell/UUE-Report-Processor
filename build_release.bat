@@ -12,6 +12,11 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 set APP_NAME=SetupReportProcessor
+
+REM Build from the project venv when there is one. The global Python carries
+REM unrelated packages (torch, transformers) that PyInstaller would bundle.
+set PY=python
+if exist venv\Scripts\python.exe set PY=venv\Scripts\python.exe
 set DIST_DIR=dist\%APP_NAME%
 
 echo.
@@ -22,7 +27,7 @@ echo ============================================================
 REM -- Optional dependency install (pass /deps) ----------------
 if /i "%~1"=="/deps" (
     echo [1/5] Installing dependencies...
-    python -m pip install -r requirements.txt pyinstaller || goto :error
+    %PY% -m pip install -r requirements.txt pyinstaller || goto :error
 ) else (
     echo [1/5] Skipping dependency install ^(pass /deps to force^).
 )
@@ -35,7 +40,7 @@ if exist "%APP_NAME%.zip" del /q "%APP_NAME%.zip"
 
 REM -- Build with PyInstaller ----------------------------------
 echo [3/5] Running PyInstaller...
-python -m PyInstaller --noconfirm --windowed --name %APP_NAME% --icon=UUE.ico gui_wrapper.py || goto :error
+%PY% -m PyInstaller --noconfirm --windowed --name %APP_NAME% --icon=UUE.ico gui_wrapper.py || goto :error
 
 REM -- Copy runtime files next to the exe ----------------------
 echo [4/5] Copying runtime files...
@@ -44,7 +49,7 @@ copy /y UUE.ico "%DIST_DIR%\" >nul || goto :error
 
 REM -- Zip the bundle for distribution -------------------------
 echo [5/5] Creating %APP_NAME%.zip...
-powershell -NoProfile -Command "Compress-Archive -Path '%DIST_DIR%\*' -DestinationPath '%APP_NAME%.zip' -Force" || goto :error
+powershell -NoProfile -Command "$ErrorActionPreference = 'Stop'; Compress-Archive -Path '%DIST_DIR%\*' -DestinationPath '%APP_NAME%.zip' -Force" || goto :error
 
 echo.
 echo ============================================================

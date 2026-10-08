@@ -46,8 +46,8 @@ becomes a work queue once files are added, and ends on a summary of what was
 produced.
 
 1. **Add files**: Drop PDFs or Excel exports anywhere in the window, or click the drop zone to browse.
-   Or click **Pull from 25Live** and pick a day (or a From/To range, such as a weekend) to queue it
-   straight from 25Live
+   To skip the export, click **Or pull a day from 25Live…** (**From 25Live…** once files are queued)
+   and pick a day, or a From/To range such as a weekend
 2. **Choose output**: Toggle **Excel .xlsx** and/or **CSV .csv** — or leave both off
    for a timeline-only run (see below)
 3. **Process**: Click **Process N files** — each file shows live status as it runs
@@ -365,7 +365,7 @@ Then zip the `dist/SetupReportProcessor/` folder for distribution.
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
-The current release is **v4.2.0**.
+The current release is **v4.3.0**.
 
 ## License
 

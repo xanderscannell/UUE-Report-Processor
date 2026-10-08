@@ -8,9 +8,11 @@ features are added compatibly.
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-10-07: Straight from 25Live, and every event's details a click away
+
 ### Pull straight from 25Live
 
-- **New third event source.** Click **Pull from 25Live**, pick a day (or a From/To range for a weekend), and it is queued alongside any report files. No export and no sign-in: it reads the public view anyone sees at 25live.collegenet.com/pro/umdearborn
+- **New third event source.** Click **Or pull a day from 25Live…** (**From 25Live…** once files are queued), pick a day (or a From/To range for a weekend), and it is queued alongside any report files. No export and no sign-in: it reads the public view anyone sees at 25live.collegenet.com/pro/umdearborn
 - **Setup times are back.** 25Live records when setup starts, so Setup Ready By matches what the PDF showed, unlike an Excel export
 - The same whitelist, sorting, output and stacked timeline apply. Output files are named from the day, as before
 - CLI: `python setup_report_processor.py --25live 2026-10-06`
@@ -28,7 +30,6 @@ features are added compatibly.
 - If 25Live's resource list cannot be fetched, the day still loads, just without resources
 - **Open in 25Live**: a 25Live event's popup has a button that opens the event's own page on the 25Live site
 - The hover card now says "Click for details" when there is more to see
-- Test suite grew from 98 to 113 tests
 
 ### Every bar shows its room
 
@@ -39,6 +40,11 @@ features are added compatibly.
 ### Fixed
 
 - A room name with a doubled space ("FCS Michigan  East", as 25Live writes it) now matches its single-spaced whitelist entry from every source, not just 25Live. An Excel export carrying the doubled space would have dropped the event
+
+### Under the hood
+
+- `build_release.bat` builds from the project's `venv` when there is one, so the release no longer bundles unrelated packages from the global Python (the unpacked app is 224 MB, down from about 1 GB)
+- Test suite grew from 100 to 116 tests
 
 ## [4.2.0] - 2026-08-22: Database exports, and a timeline that reads at a glance
 
@@ -119,6 +125,7 @@ features are added compatibly.
 - Excel/CSV export
 - Comprehensive logging
 
+[4.3.0]: https://github.com/xanderscannell/UUE-Report-Processor/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/xanderscannell/UUE-Report-Processor/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/xanderscannell/UUE-Report-Processor/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/xanderscannell/UUE-Report-Processor/compare/v3.0.0...v4.0.0

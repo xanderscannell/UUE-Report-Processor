@@ -53,9 +53,8 @@ Before the session ends:
 
 ## Current Focus
 
-**Phase**: 25Live as a third event source (ADR-012)
-**Working on**: Soaking the 25Live pull against real days and their PDFs, then
-rebuilding the portable exe (check HTTPS works frozen)
+**Phase**: v4.3.0 released (25Live source, ADR-012)
+**Working on**: Nothing in flight; v4.3.0 is out
 **Key constraint**: Must not break existing regex-based parsing for working PDF formats —
 the PDF reader stays a first-class source, not a deprecated one.
 Accepted file types come from `SUPPORTED_SUFFIXES` in `setup_report_processor.py`;

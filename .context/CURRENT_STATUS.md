@@ -4,13 +4,10 @@
 
 ## Current Position
 
-**Phase**: 25Live as a third event source (ADR-012), unreleased
-**Subphase**: Built, tested and checked against live data; next is a real-use
-soak and the exe rebuild
-**Progress**: A day can be pulled straight from 25Live's public guest view and
-queued like a file, from the GUI or with `--25live YYYY-MM-DD`. 113/113 tests
-pass, all 98 pre-existing ones unedited. v4.2.0 is tagged; this work sits under
-`[Unreleased]` in the changelog.
+**Phase**: v4.3.0 released 2026-10-07 (25Live source, event popup, two-line labels)
+**Subphase**: Done: tagged, pushed, and published on GitHub as Latest with the zip
+**Progress**: Changelog cut as 4.3.0, README points at v4.3.0, docs name the
+real 25Live buttons, exe rebuilt from the venv and smoke-tested. 116/116 pass.
 
 ## Recently Completed (2026-10-07: room always on the timeline)
 
@@ -392,34 +389,37 @@ pass, all 98 pre-existing ones unedited. v4.2.0 is tagged; this work sits under
 - **GUI layout fixes**: Action buttons visible and properly ordered above Process Files button
 - **v1 backward compatibility**: Processor can still load legacy v1 config files
 
-## Release checklist — v4.2.0
+## Release checklist — v4.3.0
 
-Everything in `git log v4.1.0..HEAD` is 4.2.0: the Daily Events Excel source
-plus the timeline work (in-bar labels, the date axis, multi-day, the hover card).
+Everything in `git log v4.2.0..HEAD`: the 25Live source, the event popup
+(resources, Open in 25Live), two-line labels, the doubled-space fix.
 
-- [x] `CHANGELOG.md` — 4.2.0 covers all seven commits, with its compare link
-- [x] `README.md` / `documentation/README_GUI.md` describe the current timeline
-- [x] README already states the current release is v4.2.0
-- [x] 100/100 tests pass
-- [ ] Open the app on a real (scaled) display: drop the two weekend exports,
-      check the stacked timeline, the Day filter, the in-bar labels and the
-      hover card
-- [ ] `git tag v4.2.0` (annotated, to match the earlier tags)
-- [ ] `build_release.bat` — rebuild the portable exe with the Qt/pyqtgraph deps
-- [ ] Copy `location_config.json` into `dist/SetupReportProcessor/`
-- [ ] Smoke-test the exe (window opens, timeline opens), then zip and distribute
-- [ ] `git push` and `git push --tags`
+- [x] `CHANGELOG.md`: `[4.3.0] - 2026-10-07` with its compare link
+- [x] README states the current release is v4.3.0
+- [x] README, `README_GUI.md` and `QUICKSTART.md` cover the 25Live pull, with
+      the buttons' real labels ("Or pull a day from 25Live…", "From 25Live…")
+- [x] 116/116 tests pass
+- [x] Real display: Oct 6 + Oct 7 from 25Live stacked, maximized (1920 wide)
+      and at 1000x650; rooms always shown, narrow bars spill on two lines
+- [x] `build_release.bat` now builds from `venv` (the global Python bundled
+      torch/transformers: 1 GB unpacked, now 224 MB) and fails if the zip fails
+      (a locked `base_library.zip` used to print SUCCESS with no zip)
+- [x] Built and zipped: `SetupReportProcessor.zip`, 96.7 MB
+- [x] Smoke-tested the exe through UI Automation: starts in 2.7s, pulled
+      today from 25Live (HTTPS works frozen, 18 events, same as from source),
+      timeline opened with two-line labels, closed cleanly
+- [x] `git tag -a v4.3.0` on `2076bf5`
+- [x] Pushed master and the tag
+- [x] GitHub release v4.3.0 published (Latest), body = the changelog section,
+      zip attached (101,449,118 bytes, same as local)
 
-Note: nothing in the app source carries a version string — the version lives in
-`CHANGELOG.md`, the README pointer, and the tag. There is nothing to bump in code.
+Note: nothing in the app source carries a version string; the version lives in
+`CHANGELOG.md`, the README pointer, and the tag.
 
 ## In Progress
 
-- [ ] Use the 25Live pull for a few real days and compare against that day's
-      PDF: same events, same Setup Ready By. 25Live returns campus-wide
-      bookings (375 on a weekday), so the whitelist is doing all the filtering
-- [ ] Rebuild the exe and confirm HTTPS works from the frozen build (Python's
-      `ssl` reads the Windows certificate store; not yet tried frozen)
+- [x] 25Live soak against real days (user, 2026-10-07: "well tested")
+- [x] Rebuild the exe and confirm HTTPS works from the frozen build
 
 - [ ] Run the Excel path against more real exports (multi-day, and a day whose
       events actually land in whitelisted rooms) — the sample only exercises two
@@ -429,7 +429,7 @@ Note: nothing in the app source carries a version string — the version lives i
 - [ ] Verify the overhauled UI on a real (scaled) display, dropping a PDF and an
       export in one batch — now also: confirm the in-bar labels and the timeline
       scrollbar on a real busy day
-- [ ] Rebuild the portable exe with the new Qt/pyqtgraph deps
+- [x] Rebuild the portable exe with the new Qt/pyqtgraph deps
 - [x] Refresh `documentation/README_GUI.md` and `QUICKSTART.md` for the staged UI
 - [x] Update the top-level README for the staged UI, Settings menu, and timeline
 - [x] Rewrite `.context/SETUP.md` (stale `requirements-gui.txt`, tkinterdnd2, `input/`)

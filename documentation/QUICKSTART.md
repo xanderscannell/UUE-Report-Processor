@@ -42,7 +42,8 @@ gui_wrapper.bat
 # Any platform, with the venv activated:
 python gui_wrapper.py
 ```
-Drop reports in, pick Excel and/or CSV, click Process. Full walkthrough in
+Drop reports in (or click **Or pull a day from 25Live…** and pick a day), pick Excel
+and/or CSV, click Process. Full walkthrough in
 [README_GUI.md](README_GUI.md).
 
 **Process a single report (`.pdf` or `.xlsx`):**
@@ -50,6 +51,11 @@ Drop reports in, pick Excel and/or CSV, click Process. Full walkthrough in
 python setup_report_processor.py your_report.pdf
 ```
 This generates: `your_report_schedule.xlsx`
+
+**Pull a day straight from 25Live instead of reading a file:**
+```bash
+python setup_report_processor.py --25live 2026-10-06
+```
 
 **Process with custom name:**
 ```bash
@@ -72,7 +78,8 @@ batch_process.bat
 
 ### What it Does
 
-1. Extracts events from Daily Setup Report PDFs or Daily Events Excel exports
+1. Extracts events from Daily Setup Report PDFs, Daily Events Excel exports,
+   or a day pulled straight from 25Live
 2. Filters events by location, using the whitelist in `location_config.json`
    (editable in the app under Settings → Location Whitelist…)
 3. Creates two entries per event:
